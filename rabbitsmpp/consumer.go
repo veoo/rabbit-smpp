@@ -7,23 +7,27 @@ import (
 )
 
 type Consumer interface {
-	Consume() (chan pdu.Body, error)
+	Consume(chan<- pdu.Body, chan<- error)
 	Client
 }
 
 type consumer struct {
 	*client
+	stop chan bool
 }
 
 func NewConsumer(conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
-	return &consumer{c}, nil
+	stop := make(chan bool)
+
+	return &consumer{c, stop}, nil
 }
 
-func (c *consumer) Consume() (chan pdu.Body, error) {
+func (c *consumer) Consume(pduChan chan<- pdu.Body, errChan chan<- error) {
 	ch, err := c.Channel()
 	if err != nil {
-		return nil, err
+		errChan <- err
+		return
 	}
 	defer ch.Close()
 
@@ -36,7 +40,7 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 		nil,           // arguments
 	)
 	if err != nil {
-		return nil, err
+		errChan <- err
 	}
 
 	msgs, err := ch.Consume(
@@ -49,22 +53,31 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 		nil,    // args
 	)
 	if err != nil {
-		return nil, err
+		errChan <- err
 	}
 
-	pduChan := make(chan pdu.Body)
-	go func() {
-		for d := range msgs {
+	for {
+		select {
+		case d := <-msgs:
+			d.Ack(false)
 			p, err := pdu.UnmarshalPDU(d.Body)
 			if err != nil {
-				log.Printf("unable to unmarshal PDU from json:", err)
-			} else {
-				log.Printf("fetched: %s", d.Body)
-				pduChan <- p
-				d.Ack(false)
+				log.Printf("failed to unmarshal PDU: %v", err)
+				errChan <- err
+				continue
 			}
+			h := p.Header()
+			log.Printf("fetched: Seq: %v, ID: %v", h.Seq, h.ID.String())
+			pduChan <- p
+		case <-c.stop:
+			log.Printf("Stopping consumer")
+			return
 		}
-	}()
+	}
 
-	return pduChan, err
+}
+
+func (c *consumer) Close() error {
+	c.stop <- true
+	return c.client.Close()
 }
