@@ -19,7 +19,6 @@ type consumer struct {
 func NewConsumer(conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	stop := make(chan bool)
-
 	return &consumer{c, stop}, nil
 }
 
@@ -63,14 +62,12 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 				d.Ack(false)
 				p, err := pdu.UnmarshalPDU(d.Body)
 				if err != nil {
+					// TODO: Figure out what to do with this failed job
 					log.Printf("failed to unmarshal PDU: %v", err)
 					continue
 				}
-				h := p.Header()
-				log.Printf("fetched: Seq: %v, ID: %v", h.Seq, h.ID.String())
 				pduChan <- p
 			case <-c.stop:
-				log.Printf("Stopping consumer")
 				return
 			}
 		}

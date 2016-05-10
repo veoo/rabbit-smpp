@@ -2,7 +2,6 @@ package rabbitsmpp
 
 import (
 	"encoding/json"
-	"log"
 
 	"github.com/streadway/amqp"
 	"github.com/veoo/go-smpp/smpp/pdu"
@@ -57,8 +56,6 @@ func (p *publisher) Publish(b pdu.Body) error {
 	if err != nil {
 		return err
 	}
-
-	log.Printf("Published %s", string(bodyBytes))
 
 	return nil
 }
