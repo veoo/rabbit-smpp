@@ -1,15 +1,11 @@
 package rabbitsmpp
 
 import (
-	"fmt"
-
 	"github.com/streadway/amqp"
 )
 
 type Config struct {
-	User      string
-	Password  string
-	Host      string
+	URL       string
 	QueueName string
 }
 
@@ -37,8 +33,7 @@ func NewClient(conf Config) Client {
 // it returns a channel that notifies the listener when the connection
 // is closed either by an error/failure or correct shutdown
 func (c *client) Bind() (chan *amqp.Error, error) {
-	address := fmt.Sprintf("amqp://%s:%s@%s", c.config.User, c.config.Password, c.config.Host)
-	conn, err := amqp.Dial(address)
+	conn, err := amqp.Dial(c.config.URL)
 	if err != nil {
 		return nil, err
 	}
