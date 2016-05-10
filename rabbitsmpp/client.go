@@ -10,7 +10,6 @@ type Config struct {
 	User      string
 	Password  string
 	Host      string
-	Port      int
 	QueueName string
 }
 
@@ -38,7 +37,7 @@ func NewClient(conf Config) Client {
 // it returns a channel that notifies the listener when the connection
 // is closed either by an error/failure or correct shutdown
 func (c *client) Bind() (chan *amqp.Error, error) {
-	address := fmt.Sprintf("amqp://%s:%s@%s:%d/", c.config.User, c.config.Password, c.config.Host, c.config.Port)
+	address := fmt.Sprintf("amqp://%s:%s@%s", c.config.User, c.config.Password, c.config.Host)
 	conn, err := amqp.Dial(address)
 	if err != nil {
 		return nil, err
