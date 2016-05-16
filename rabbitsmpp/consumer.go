@@ -1,6 +1,7 @@
 package rabbitsmpp
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/veoo/go-smpp/smpp/pdu"
@@ -60,13 +61,14 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 			select {
 			case d := <-msgs:
 				d.Ack(false)
-				p, err := pdu.UnmarshalPDU(d.Body)
+				c := &pdu.Codec{}
+				err := json.Unmarshal(d.Body, c)
 				if err != nil {
 					// TODO: Figure out what to do with this failed job
 					log.Printf("failed to unmarshal PDU: %v", err)
 					continue
 				}
-				pduChan <- p
+				pduChan <- c
 			case <-c.stop:
 				return
 			}
