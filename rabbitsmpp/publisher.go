@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 
 	"github.com/streadway/amqp"
-	"github.com/veoo/go-smpp/smpp/pdu"
 )
 
 type Publisher interface {
-	Publish(pdu.Body) error
+	Publish(Job) error
 	Client
 }
 
@@ -21,7 +20,7 @@ func NewPublisher(conf Config) (Publisher, error) {
 	return &publisher{c}, nil
 }
 
-func (p *publisher) Publish(b pdu.Body) error {
+func (p *publisher) Publish(j Job) error {
 	ch, err := p.Channel()
 	if err != nil {
 		return err
@@ -40,7 +39,7 @@ func (p *publisher) Publish(b pdu.Body) error {
 		return err
 	}
 
-	bodyBytes, err := json.Marshal(b)
+	bodyBytes, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}

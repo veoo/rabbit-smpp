@@ -3,12 +3,10 @@ package rabbitsmpp
 import (
 	"encoding/json"
 	"log"
-
-	"github.com/veoo/go-smpp/smpp/pdu"
 )
 
 type Consumer interface {
-	Consume() (chan pdu.Body, error)
+	Consume() (chan Job, error)
 	Client
 }
 
@@ -23,7 +21,7 @@ func NewConsumer(conf Config) (Consumer, error) {
 	return &consumer{c, stop}, nil
 }
 
-func (c *consumer) Consume() (chan pdu.Body, error) {
+func (c *consumer) Consume() (chan Job, error) {
 	ch, err := c.Channel()
 	if err != nil {
 		return nil, err
@@ -53,7 +51,7 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 	if err != nil {
 		return nil, err
 	}
-	pduChan := make(chan pdu.Body)
+	jobChan := make(chan Job)
 
 	go func() {
 		defer ch.Close()
@@ -61,21 +59,21 @@ func (c *consumer) Consume() (chan pdu.Body, error) {
 			select {
 			case d := <-msgs:
 				d.Ack(false)
-				c := &pdu.Codec{}
-				err := json.Unmarshal(d.Body, c)
+				j := Job{}
+				err := json.Unmarshal(d.Body, &j)
 				if err != nil {
 					// TODO: Figure out what to do with this failed job
 					log.Printf("failed to unmarshal PDU: %v", err)
 					continue
 				}
-				pduChan <- c
+				jobChan <- j
 			case <-c.stop:
 				return
 			}
 		}
 	}()
 
-	return pduChan, nil
+	return jobChan, nil
 }
 
 func (c *consumer) Close() error {
