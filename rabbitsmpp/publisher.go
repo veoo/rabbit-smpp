@@ -29,7 +29,7 @@ func (p *publisher) Publish(j Job) error {
 
 	q, err := ch.QueueDeclare(
 		p.QueueName(), // name
-		false,         // durable
+		true,          // durable
 		false,         // delete when unused
 		false,         // exclusive
 		false,         // no-wait

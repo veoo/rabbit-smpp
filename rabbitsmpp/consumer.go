@@ -29,7 +29,7 @@ func (c *consumer) Consume() (chan Job, error) {
 
 	q, err := ch.QueueDeclare(
 		c.QueueName(), // name
-		false,         // durable
+		true,          // durable
 		false,         // delete when unused
 		false,         // exclusive
 		false,         // no-wait
@@ -58,7 +58,6 @@ func (c *consumer) Consume() (chan Job, error) {
 		for {
 			select {
 			case d := <-msgs:
-				d.Ack(false)
 				j := Job{}
 				err := json.Unmarshal(d.Body, &j)
 				if err != nil {
@@ -66,6 +65,7 @@ func (c *consumer) Consume() (chan Job, error) {
 					log.Printf("failed to unmarshal PDU: %v", err)
 					continue
 				}
+				j.delivery = &d
 				jobChan <- j
 			case <-c.stop:
 				return
