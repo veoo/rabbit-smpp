@@ -9,7 +9,7 @@ import (
 )
 
 type Job struct {
-	PDU        pdu.Body          `json:"pdu"`
+	PDUs       []pdu.Body        `json:"pdus"`
 	Attributes map[string]string `json:"attributes"`
 	delivery   *amqp.Delivery    `json:"-"`
 }
@@ -17,7 +17,7 @@ type Job struct {
 // Since pdu.Body is an interface, we need an special method to pass a concrete type
 func (j *Job) UnmarshalJSON(b []byte) error {
 	s := &struct {
-		PDU        *pdu.Codec        `json:"pdu"`
+		PDUs       []*pdu.Codec      `json:"pdus"`
 		Attributes map[string]string `json:"attributes"`
 	}{}
 
@@ -25,7 +25,10 @@ func (j *Job) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	j.PDU = s.PDU
+	j.PDUs = make([]pdu.Body, len(s.PDUs))
+	for i := range j.PDUs {
+		j.PDUs[i] = s.PDUs[i]
+	}
 	j.Attributes = s.Attributes
 	return nil
 }
