@@ -14,9 +14,16 @@ type Closer interface {
 	Close() error
 }
 
+type Channel interface {
+	QueueDeclare(string, bool, bool, bool, bool, amqp.Table) (amqp.Queue, error)
+	Consume(string, string, bool, bool, bool, bool, amqp.Table) (<-chan amqp.Delivery, error)
+	Publish(string, string, bool, bool, amqp.Publishing) error
+	Closer
+}
+
 type Client interface {
 	Bind() (chan *amqp.Error, error)
-	Channel() (*amqp.Channel, error)
+	Channel() (Channel, error)
 	Closer
 }
 
@@ -42,7 +49,7 @@ func (c *client) Bind() (chan *amqp.Error, error) {
 	return conn.NotifyClose(errors), nil
 }
 
-func (c *client) Channel() (*amqp.Channel, error) {
+func (c *client) Channel() (Channel, error) {
 	return c.conn.Channel()
 }
 
