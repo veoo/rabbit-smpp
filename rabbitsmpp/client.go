@@ -16,6 +16,7 @@ type Closer interface {
 
 type Channel interface {
 	QueueDeclare(string, bool, bool, bool, bool, amqp.Table) (amqp.Queue, error)
+	QueueInspect(string) (amqp.Queue, error)
 	Consume(string, string, bool, bool, bool, bool, amqp.Table) (<-chan amqp.Delivery, error)
 	Publish(string, string, bool, bool, amqp.Publishing) error
 	Closer
