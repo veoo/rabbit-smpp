@@ -7,30 +7,30 @@ import (
 )
 
 type Consumer interface {
-	Consume() (chan Job, error)
+	Consume() (chan Job, chan error, error)
 	Stop() error
 	Client
 }
 
 type consumer struct {
 	*client
-	stop    chan bool
+	errChan chan error
 	channel Channel
 }
 
 func NewConsumer(conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
-	stop := make(chan bool)
-	return &consumer{c, stop, nil}, nil
+	errChan := make(chan error)
+	return &consumer{c, errChan, nil}, nil
 }
 
-func (c *consumer) Consume() (chan Job, error) {
+func (c *consumer) Consume() (chan Job, chan error, error) {
 	if c.channel != nil {
-		return nil, errors.New("consumer already active")
+		return nil, nil, errors.New("consumer already active")
 	}
 	ch, err := c.Channel()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c.channel = ch
 
@@ -43,7 +43,7 @@ func (c *consumer) Consume() (chan Job, error) {
 		nil,           // arguments
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	msgs, err := c.channel.Consume(
@@ -56,7 +56,7 @@ func (c *consumer) Consume() (chan Job, error) {
 		nil,    // args
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	jobChan := make(chan Job)
 
@@ -69,38 +69,43 @@ func (c *consumer) Consume() (chan Job, error) {
 				if err != nil {
 					// TODO: Figure out what to do with this failed job
 					log.Printf("failed to unmarshal PDU: %v", err)
-					continue
+					c.stop("empty body in delivery, stopping consumption")
+					return
 				}
 				j.delivery = &d
 				jobChan <- j
-			case <-c.stop:
+			case <-c.errChan:
 				return
 			}
 		}
 	}()
 
-	return jobChan, nil
+	return jobChan, c.errChan, nil
 }
 
-func (c *consumer) sendStop() {
-	c.stop <- true
+func (c *consumer) sendStop(msg string) {
+	c.errChan <- errors.New(msg)
 }
 
-func (c *consumer) Stop() error {
+func (c *consumer) stop(msg string) error {
 	if c.channel == nil {
 		return nil
 	}
-	c.sendStop()
+	c.sendStop(msg)
 	err := c.channel.Close()
 	c.channel = nil
 	return err
+}
+
+func (c *consumer) Stop() error {
+	return c.stop("stop received")
 }
 
 func (c *consumer) Close() error {
 	if c.channel == nil {
 		return nil
 	}
-	go c.sendStop()
+	go c.sendStop("close received")
 	c.channel = nil
 	return c.conn.Close()
 }
