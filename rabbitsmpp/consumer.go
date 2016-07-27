@@ -2,29 +2,53 @@ package rabbitsmpp
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
+	"github.com/vektra/errors"
+	"golang.org/x/net/context"
 )
 
 type Consumer interface {
-	Consume() (chan Job, chan error, error)
+	Consume() (<-chan Job, <-chan error, error)
 	Stop() error
-	Client
+	ID() string
 }
 
 type consumer struct {
 	*client
-	errChan chan error
 	channel Channel
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewConsumer(conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
-	errChan := make(chan error)
-	return &consumer{c, errChan, nil}, nil
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return &consumer{
+		client: c,
+		channel:nil,
+		ctx:ctx,
+		cancel:cancel,
+	}, nil
 }
 
-func (c *consumer) Consume() (chan Job, chan error, error) {
+func NewConsumerWithContext(ctx context.Context, conf Config) (Consumer, error){
+	c := NewClient(conf).(*client)
+	ctx, cancel := context.WithCancel(ctx)
+
+	return &consumer{
+		client: c,
+		channel:nil,
+		ctx:ctx,
+		cancel:cancel,
+	}, nil
+}
+
+func (c *consumer) ID() string{
+	return c.client.QueueName()
+}
+
+func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 	if c.channel != nil {
 		return nil, nil, errors.New("consumer already active")
 	}
@@ -59,8 +83,16 @@ func (c *consumer) Consume() (chan Job, chan error, error) {
 		return nil, nil, err
 	}
 	jobChan := make(chan Job)
+	errChan := make(chan error)
 
 	go func() {
+		defer func(){
+			_ = c.channel.Close()
+			c.channel = nil
+		}()
+		defer close(jobChan)
+		defer close(errChan)
+
 		for {
 			select {
 			case d := <-msgs:
@@ -69,43 +101,26 @@ func (c *consumer) Consume() (chan Job, chan error, error) {
 				if err != nil {
 					// TODO: Figure out what to do with this failed job
 					log.Printf("failed to unmarshal PDU: %v", err)
-					c.stop("empty body in delivery, stopping consumption")
+					errChan <- err
 					return
 				}
 				j.delivery = &d
 				jobChan <- j
-			case <-c.errChan:
+			case <- c.ctx.Done():
+				log.Println("EOF consuming for : %s", c.ID())
 				return
 			}
 		}
 	}()
 
-	return jobChan, c.errChan, nil
-}
-
-func (c *consumer) sendStop(msg string) {
-	c.errChan <- errors.New(msg)
-}
-
-func (c *consumer) stop(msg string) error {
-	if c.channel == nil {
-		return nil
-	}
-	c.sendStop(msg)
-	err := c.channel.Close()
-	c.channel = nil
-	return err
+	return jobChan, errChan, nil
 }
 
 func (c *consumer) Stop() error {
-	return c.stop("stop received")
-}
-
-func (c *consumer) Close() error {
 	if c.channel == nil {
 		return nil
 	}
-	go c.sendStop("close received")
-	c.channel = nil
-	return c.conn.Close()
+	// Sends the stop signal
+	c.cancel()
+	return nil
 }
