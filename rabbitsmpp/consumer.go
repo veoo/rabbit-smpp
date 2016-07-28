@@ -2,9 +2,9 @@ package rabbitsmpp
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 
-	"github.com/vektra/errors"
 	"golang.org/x/net/context"
 )
 

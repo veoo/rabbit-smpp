@@ -1,7 +1,6 @@
 package rabbitsmpp
 
 import (
-	_ "fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

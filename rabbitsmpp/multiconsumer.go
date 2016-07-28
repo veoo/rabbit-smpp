@@ -1,9 +1,9 @@
 package rabbitsmpp
 
 import (
+	"errors"
 	"sync"
 
-	"github.com/go-errors/errors"
 	"golang.org/x/net/context"
 )
 
