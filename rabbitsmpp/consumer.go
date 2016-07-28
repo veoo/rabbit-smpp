@@ -108,7 +108,7 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 				j.delivery = &d
 				jobChan <- j
 			case <-c.ctx.Done():
-				log.Println("EOF consuming for : %s", c.ID())
+				log.Printf("EOF consuming for: %s", c.ID())
 				return
 			}
 		}
