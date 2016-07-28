@@ -11,7 +11,7 @@ import (
 type Job struct {
 	PDUs       []pdu.Body        `json:"pdus"`
 	Attributes map[string]string `json:"attributes"`
-	delivery   *amqp.Delivery    `json:"-"`
+	delivery   *amqp.Delivery
 }
 
 // Since pdu.Body is an interface, we need an special method to pass a concrete type
