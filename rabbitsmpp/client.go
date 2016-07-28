@@ -1,8 +1,6 @@
 package rabbitsmpp
 
-import (
-	"github.com/streadway/amqp"
-)
+import "github.com/streadway/amqp"
 
 type Config struct {
 	URL       string

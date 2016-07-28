@@ -1,16 +1,15 @@
 package rabbitsmpp
 
-
 import (
-	"golang.org/x/net/context"
 	"sync"
+
 	"github.com/go-errors/errors"
-	_ "fmt"
+	"golang.org/x/net/context"
 )
 
 var (
 	errConsumerDuplicate = errors.New("consumer already exist")
-	errConsumerMissing = errors.New("consumer missing")
+	errConsumerMissing   = errors.New("consumer missing")
 )
 
 // ConsumerContainer is a container that collects the data from all the consumer channels into 1
@@ -36,18 +35,18 @@ func NewContainer() *ConsumerContainer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &ConsumerContainer{
-		consumers:consumers,
-		m: &m,
-		wg: &wg,
-		Ctx: ctx,
-		stopper: cancel,
+		consumers:  consumers,
+		m:          &m,
+		wg:         &wg,
+		Ctx:        ctx,
+		stopper:    cancel,
 		outJobChan: outJobChan,
 		outErrChan: outErrChan,
 	}
 }
 
 func (container *ConsumerContainer) getNoLock(consumerID string) (Consumer, error) {
-	consumer, ok := container.consumers[consumerID];
+	consumer, ok := container.consumers[consumerID]
 	if !ok {
 		return nil, errConsumerMissing
 	}
@@ -91,7 +90,7 @@ func (container *ConsumerContainer) RemoveStop(consumerID string) error {
 	}
 
 	err = container.removeNoLock(consumerID)
-	if err != nil{
+	if err != nil {
 		return nil
 	}
 
@@ -117,24 +116,23 @@ func (container *ConsumerContainer) runConsumer(consumer Consumer) {
 	defer container.wg.Done()
 
 	jChan, eChan, err := consumer.Consume()
-	if err != nil{
+	if err != nil {
 		return
 	}
 	// If there is error we might remove the consumer ?
 	for {
 		select {
-		case job, ok := <- jChan:
+		case job, ok := <-jChan:
 			if !ok {
-				//fmt.Println("Upstream Closed ", consumer.ID())
 				return
 			}
 			container.outJobChan <- job
 
-		case err, ok := <- eChan:
-			if !ok{
+		case err, ok := <-eChan:
+			if !ok {
 				// We disable that bit of the select statement
 				eChan = nil
-			}else{
+			} else {
 				container.outErrChan <- err
 			}
 
@@ -146,7 +144,7 @@ func (container *ConsumerContainer) Consume() (<-chan Job, <-chan error, error) 
 	return container.outJobChan, container.outErrChan, nil
 }
 
-func (container *ConsumerContainer) ID() string{
+func (container *ConsumerContainer) ID() string {
 	// We might want to return all of the queues so far ?
 	return "Container"
 }

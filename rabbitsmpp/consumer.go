@@ -3,6 +3,7 @@ package rabbitsmpp
 import (
 	"encoding/json"
 	"log"
+
 	"github.com/vektra/errors"
 	"golang.org/x/net/context"
 )
@@ -16,8 +17,8 @@ type Consumer interface {
 type consumer struct {
 	*client
 	channel Channel
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 func NewConsumer(conf Config) (Consumer, error) {
@@ -25,26 +26,26 @@ func NewConsumer(conf Config) (Consumer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &consumer{
-		client: c,
-		channel:nil,
-		ctx:ctx,
-		cancel:cancel,
+		client:  c,
+		channel: nil,
+		ctx:     ctx,
+		cancel:  cancel,
 	}, nil
 }
 
-func NewConsumerWithContext(ctx context.Context, conf Config) (Consumer, error){
+func NewConsumerWithContext(ctx context.Context, conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &consumer{
-		client: c,
-		channel:nil,
-		ctx:ctx,
-		cancel:cancel,
+		client:  c,
+		channel: nil,
+		ctx:     ctx,
+		cancel:  cancel,
 	}, nil
 }
 
-func (c *consumer) ID() string{
+func (c *consumer) ID() string {
 	return c.client.QueueName()
 }
 
@@ -86,7 +87,7 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 	errChan := make(chan error)
 
 	go func() {
-		defer func(){
+		defer func() {
 			_ = c.channel.Close()
 			c.channel = nil
 		}()
@@ -106,7 +107,7 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 				}
 				j.delivery = &d
 				jobChan <- j
-			case <- c.ctx.Done():
+			case <-c.ctx.Done():
 				log.Println("EOF consuming for : %s", c.ID())
 				return
 			}

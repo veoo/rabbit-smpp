@@ -1,18 +1,18 @@
 package rabbitsmpp
 
 import (
+	_ "fmt"
 	"testing"
-	"github.com/stretchr/testify/suite"
+
 	"github.com/stretchr/testify/assert"
-	_ "fmt"
-	_ "fmt"
+	"github.com/stretchr/testify/suite"
 )
 
 type MultiConsumerSuite struct {
 	suite.Suite
 }
 
-func TestMultiConsumerSuite (t *testing.T) {
+func TestMultiConsumerSuite(t *testing.T) {
 	s := &MultiConsumerSuite{}
 	suite.Run(t, s)
 }
@@ -34,21 +34,20 @@ func (s *MultiConsumerSuite) TestStartStop() {
 
 	assert.Nil(s.T(), multi.Stop())
 
-	_, ok := <- j
+	_, ok := <-j
 	assert.Equal(s.T(), ok, false)
 
-	_, ok = <- e
+	_, ok = <-e
 	assert.Equal(s.T(), ok, false)
-
 
 }
 
-func getMockConsumer(id string, jobChan chan Job, errChan chan error) Consumer{
+func getMockConsumer(id string, jobChan chan Job, errChan chan error) Consumer {
 
 	mockConsumer := &MockConsumer{}
 	mockConsumer.On("Consume").Return(jobChan, errChan, nil)
 	mockConsumer.On("ID").Return(id)
-	mockConsumer.On("Stop").Return(func() error{
+	mockConsumer.On("Stop").Return(func() error {
 		close(jobChan)
 		close(errChan)
 		//fmt.Println("Closed Channels")
@@ -58,8 +57,7 @@ func getMockConsumer(id string, jobChan chan Job, errChan chan error) Consumer{
 	return mockConsumer
 }
 
-
-func (s *MultiConsumerSuite) TestAddConsumer(){
+func (s *MultiConsumerSuite) TestAddConsumer() {
 
 	multi := NewContainer()
 	assert.Equal(s.T(), multi.ID(), "Container")
@@ -102,16 +100,15 @@ func (s *MultiConsumerSuite) TestAddConsumer(){
 	mockConsumer2.Stop()
 	assert.Nil(s.T(), multi.Stop())
 
-	_, ok := <- mj
+	_, ok := <-mj
 	assert.Equal(s.T(), ok, false)
 
-	_, ok = <- me
+	_, ok = <-me
 	assert.Equal(s.T(), ok, false)
 
 }
 
-
-func (s *MultiConsumerSuite) TestRemoveConsumer(){
+func (s *MultiConsumerSuite) TestRemoveConsumer() {
 
 	multi := NewContainer()
 	assert.Equal(s.T(), multi.ID(), "Container")
@@ -141,16 +138,15 @@ func (s *MultiConsumerSuite) TestRemoveConsumer(){
 	assert.Nil(s.T(), err)
 
 	// it should be closed already
-	_, ok := <- jobChan
+	_, ok := <-jobChan
 	assert.Equal(s.T(), ok, false)
-
 
 	assert.Nil(s.T(), multi.Stop())
 
-	_, ok = <- mj
+	_, ok = <-mj
 	assert.Equal(s.T(), ok, false)
 
-	_, ok = <- me
+	_, ok = <-me
 	assert.Equal(s.T(), ok, false)
 
 }

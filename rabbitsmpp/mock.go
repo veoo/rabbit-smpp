@@ -1,6 +1,6 @@
 package rabbitsmpp
 
-import(
+import (
 	"github.com/stretchr/testify/mock"
 )
 
