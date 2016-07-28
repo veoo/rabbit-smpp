@@ -1,0 +1,14 @@
+sudo: false
+
+language: go
+
+go:
+  - 1.6
+  - tip
+
+branches:
+  only: [master]
+
+script:
+  - go vet $(go list ./... | grep -v '/vendor/')
+  - go test -v $(go list ./... | grep -v '/vendor/')
