@@ -8,7 +8,6 @@ import (
 
 type Publisher interface {
 	Publish(Job) error
-	Client
 }
 
 type publisher struct {
@@ -21,6 +20,12 @@ func NewPublisher(conf Config) (Publisher, error) {
 }
 
 func (p *publisher) Publish(j Job) error {
+	_, err := p.Bind()
+	if err != nil {
+		return err
+	}
+	defer p.conn.Close()
+
 	ch, err := p.Channel()
 	if err != nil {
 		return err

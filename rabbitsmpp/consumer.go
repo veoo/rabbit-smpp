@@ -3,8 +3,11 @@ package rabbitsmpp
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"time"
 
+	"github.com/streadway/amqp"
 	"golang.org/x/net/context"
 )
 
@@ -49,13 +52,20 @@ func (c *consumer) ID() string {
 	return c.client.QueueName()
 }
 
-func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
-	if c.channel != nil {
-		return nil, nil, errors.New("consumer already active")
+func (c *consumer) bindWithRetry() chan *amqp.Error {
+	closeChan, err := c.Bind()
+	for err != nil {
+		log.Println("Failed to bind consumer:", err)
+		time.Sleep(5 * time.Second)
+		closeChan, err = c.Bind()
 	}
+	return closeChan
+}
+
+func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	ch, err := c.Channel()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	c.channel = ch
 
@@ -68,10 +78,10 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 		nil,           // arguments
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	msgs, err := c.channel.Consume(
+	return c.channel.Consume(
 		q.Name, // queue
 		"",     // consumer
 		false,  // auto-ackey
@@ -80,6 +90,17 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 		false,  // no-wait
 		nil,    // args
 	)
+}
+
+func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
+	if c.channel != nil {
+		return nil, nil, errors.New("consumer already active")
+	}
+	closeChan, err := c.Bind()
+	if err != nil {
+		return nil, nil, err
+	}
+	dlvChan, err := c.getConsumeChannel()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -93,28 +114,45 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 		}()
 		defer close(jobChan)
 		defer close(errChan)
-
 		for {
-			select {
-			case d := <-msgs:
-				j := Job{}
-				err := json.Unmarshal(d.Body, &j)
-				if err != nil {
-					// TODO: Figure out what to do with this failed job
-					log.Printf("failed to unmarshal PDU: %v", err)
-					errChan <- err
-					return
-				}
-				j.delivery = &d
-				jobChan <- j
-			case <-c.ctx.Done():
+			err = c.consume(dlvChan, closeChan, jobChan)
+			// if consume returns without an error, means that it was terminated
+			// properly, otherwise something went wrong and it needs to restart
+			if err == nil {
 				log.Printf("EOF consuming for: %s", c.ID())
 				return
+			}
+			errChan <- err
+			log.Println("stopped consuming jobs:", err)
+			closeChan = c.bindWithRetry()
+			dlvChan, err = c.getConsumeChannel()
+			for err != nil {
+				time.Sleep(5 * time.Second)
+				dlvChan, err = c.getConsumeChannel()
 			}
 		}
 	}()
 
 	return jobChan, errChan, nil
+}
+
+func (c *consumer) consume(dlvChan <-chan amqp.Delivery, closeChan <-chan *amqp.Error, jobChan chan<- Job) error {
+	for {
+		select {
+		case d := <-dlvChan:
+			j := Job{}
+			err := json.Unmarshal(d.Body, &j)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal PDU: %v", err)
+			}
+			j.delivery = &d
+			jobChan <- j
+		case err := <-closeChan:
+			return err
+		case <-c.ctx.Done():
+			return nil
+		}
+	}
 }
 
 func (c *consumer) Stop() error {
