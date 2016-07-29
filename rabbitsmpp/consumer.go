@@ -115,13 +115,14 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 		defer close(jobChan)
 		defer close(errChan)
 		for {
-			err = c.consume(dlvChan, closeChan, jobChan, errChan)
+			err = c.consume(dlvChan, closeChan, jobChan)
 			// if consume returns without an error, means that it was terminated
 			// properly, otherwise something went wrong and it needs to restart
 			if err == nil {
 				log.Printf("EOF consuming for: %s", c.ID())
 				return
 			}
+			errChan <- err
 			log.Println("stopped consuming jobs:", err)
 			closeChan = c.bindWithRetry()
 			dlvChan, err = c.getConsumeChannel()
@@ -135,15 +136,14 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 	return jobChan, errChan, nil
 }
 
-func (c *consumer) consume(dlvChan <-chan amqp.Delivery, closeChan <-chan *amqp.Error, jobChan chan<- Job, errChan chan<- error) error {
+func (c *consumer) consume(dlvChan <-chan amqp.Delivery, closeChan <-chan *amqp.Error, jobChan chan<- Job) error {
 	for {
 		select {
 		case d := <-dlvChan:
 			j := Job{}
 			err := json.Unmarshal(d.Body, &j)
 			if err != nil {
-				errChan <- fmt.Errorf("failed to unmarshal PDU: %v", err)
-				return err
+				return fmt.Errorf("failed to unmarshal PDU: %v", err)
 			}
 			j.delivery = &d
 			jobChan <- j
