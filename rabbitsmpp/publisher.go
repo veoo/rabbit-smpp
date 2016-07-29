@@ -24,6 +24,7 @@ func (p *publisher) Publish(j Job) error {
 	if err != nil {
 		return err
 	}
+	defer p.conn.Close()
 
 	ch, err := p.Channel()
 	if err != nil {
