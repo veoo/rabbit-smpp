@@ -97,6 +97,18 @@ func (container *ConsumerContainer) RemoveStop(consumerID string) error {
 	return nil
 }
 
+func (container *ConsumerContainer) AddFromConfig(conf Config) (string, error) {
+	consumer, err := newConsumerWithContext(container.Ctx, conf)
+	if err != nil {
+		return "", err
+	}
+	err = container.AddRun(consumer)
+	if err != nil {
+		return "", err
+	}
+	return consumer.ID(), err
+}
+
 func (container *ConsumerContainer) AddRun(consumer Consumer) error {
 	container.m.Lock()
 	defer container.m.Unlock()
