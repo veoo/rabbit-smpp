@@ -12,9 +12,16 @@ var (
 	errConsumerMissing   = errors.New("consumer missing")
 )
 
-// ConsumerContainer is a container that collects the data from all the consumer channels into 1
+type ConsumerContainer interface {
+	Consumer
+	AddFromConfig(Config) (string, error)
+	AddRun(Consumer) error
+	RemoveStop(string) error
+}
+
+// consumerContainer is a container that collects the data from all the consumer channels into 1
 // channel it's a fan-in pattern. You can add an remove consumers dynamically
-type ConsumerContainer struct {
+type consumerContainer struct {
 	consumers  map[string]Consumer
 	m          *sync.Mutex
 	wg         *sync.WaitGroup
@@ -24,7 +31,7 @@ type ConsumerContainer struct {
 	outErrChan chan error
 }
 
-func NewContainer() *ConsumerContainer {
+func NewContainer() ConsumerContainer {
 	consumers := make(map[string]Consumer)
 	var m sync.Mutex
 	var wg sync.WaitGroup
@@ -34,7 +41,7 @@ func NewContainer() *ConsumerContainer {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &ConsumerContainer{
+	return &consumerContainer{
 		consumers:  consumers,
 		m:          &m,
 		wg:         &wg,
@@ -45,7 +52,7 @@ func NewContainer() *ConsumerContainer {
 	}
 }
 
-func (container *ConsumerContainer) getNoLock(consumerID string) (Consumer, error) {
+func (container *consumerContainer) getNoLock(consumerID string) (Consumer, error) {
 	consumer, ok := container.consumers[consumerID]
 	if !ok {
 		return nil, errConsumerMissing
@@ -54,7 +61,7 @@ func (container *ConsumerContainer) getNoLock(consumerID string) (Consumer, erro
 	return consumer, nil
 }
 
-func (container *ConsumerContainer) removeNoLock(consumerID string) error {
+func (container *consumerContainer) removeNoLock(consumerID string) error {
 
 	if _, ok := container.consumers[consumerID]; !ok {
 		return errConsumerMissing
@@ -65,7 +72,7 @@ func (container *ConsumerContainer) removeNoLock(consumerID string) error {
 
 }
 
-func (container *ConsumerContainer) add(consumer Consumer) error {
+func (container *consumerContainer) add(consumer Consumer) error {
 	c, _ := container.getNoLock(consumer.ID())
 	if c != nil {
 		return errConsumerDuplicate
@@ -75,7 +82,7 @@ func (container *ConsumerContainer) add(consumer Consumer) error {
 	return nil
 }
 
-func (container *ConsumerContainer) RemoveStop(consumerID string) error {
+func (container *consumerContainer) RemoveStop(consumerID string) error {
 	container.m.Lock()
 	defer container.m.Unlock()
 
@@ -97,7 +104,19 @@ func (container *ConsumerContainer) RemoveStop(consumerID string) error {
 	return nil
 }
 
-func (container *ConsumerContainer) AddRun(consumer Consumer) error {
+func (container *consumerContainer) AddFromConfig(conf Config) (string, error) {
+	consumer, err := newConsumerWithContext(container.Ctx, conf)
+	if err != nil {
+		return "", err
+	}
+	err = container.AddRun(consumer)
+	if err != nil {
+		return "", err
+	}
+	return consumer.ID(), err
+}
+
+func (container *consumerContainer) AddRun(consumer Consumer) error {
 	container.m.Lock()
 	defer container.m.Unlock()
 
@@ -112,7 +131,7 @@ func (container *ConsumerContainer) AddRun(consumer Consumer) error {
 	return nil
 }
 
-func (container *ConsumerContainer) runConsumer(consumer Consumer) {
+func (container *consumerContainer) runConsumer(consumer Consumer) {
 	defer container.wg.Done()
 
 	jChan, eChan, err := consumer.Consume()
@@ -140,17 +159,17 @@ func (container *ConsumerContainer) runConsumer(consumer Consumer) {
 	}
 }
 
-func (container *ConsumerContainer) Consume() (<-chan Job, <-chan error, error) {
+func (container *consumerContainer) Consume() (<-chan Job, <-chan error, error) {
 	return container.outJobChan, container.outErrChan, nil
 }
 
-func (container *ConsumerContainer) ID() string {
+func (container *consumerContainer) ID() string {
 	// We might want to return all of the queues so far ?
 	return "Container"
 }
 
 // A Blocking operation waiting for all of the consumers to stop
-func (container *ConsumerContainer) Stop() error {
+func (container *consumerContainer) Stop() error {
 	container.m.Lock()
 	defer container.m.Unlock()
 

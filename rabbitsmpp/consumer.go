@@ -36,7 +36,7 @@ func NewConsumer(conf Config) (Consumer, error) {
 	}, nil
 }
 
-func NewConsumerWithContext(ctx context.Context, conf Config) (Consumer, error) {
+func newConsumerWithContext(ctx context.Context, conf Config) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
 
