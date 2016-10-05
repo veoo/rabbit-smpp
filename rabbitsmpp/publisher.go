@@ -140,7 +140,8 @@ func (p *delayedPublisher) Publish(j Job) error {
 	if err != nil {
 		return err
 	}
-	err = ch.Publish(
+
+	return ch.Publish(
 		p.delayExchange, // exchange
 		p.QueueName(),   // routing key
 		false,           // mandatory
@@ -152,10 +153,4 @@ func (p *delayedPublisher) Publish(j Job) error {
 			ContentType: "application/json",
 			Body:        bodyBytes,
 		})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
