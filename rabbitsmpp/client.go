@@ -13,6 +13,8 @@ type Closer interface {
 }
 
 type Channel interface {
+	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
+	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
 	QueueDeclare(string, bool, bool, bool, bool, amqp.Table) (amqp.Queue, error)
 	QueueInspect(string) (amqp.Queue, error)
 	Consume(string, string, bool, bool, bool, bool, amqp.Table) (<-chan amqp.Delivery, error)
