@@ -11,6 +11,12 @@ import (
 	"golang.org/x/net/context"
 )
 
+const (
+	prefetchCount = 100
+	prefetchSize  = 0
+	global        = false
+)
+
 type Consumer interface {
 	Consume() (<-chan Job, <-chan error, error)
 	Stop() error
@@ -67,6 +73,11 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = ch.Qos(prefetchCount, prefetchSize, global)
+	if err != nil {
+		return nil, err
+	}
+
 	c.channel = ch
 
 	q, err := c.channel.QueueDeclare(
