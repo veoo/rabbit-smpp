@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	prefetchCount = 100
+	prefetchCount = 20
 	prefetchSize  = 0
 	global        = false
 )
