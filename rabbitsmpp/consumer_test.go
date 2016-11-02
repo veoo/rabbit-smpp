@@ -21,7 +21,7 @@ func (s *ConsumerSuite) SetupTest() {}
 func (s *ConsumerSuite) TearDownTest() {}
 
 func (s *ConsumerSuite) Test_buildConsumeOptions() {
-	options := []ConsumeOption{}
+	options := []ConsumeOptionSetter{}
 
 	o := buildConsumeOptions(options...)
 	assert.Equal(s.T(), defaultPrefetchCount, o.prefetchCount)

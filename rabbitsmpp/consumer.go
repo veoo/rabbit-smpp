@@ -17,9 +17,7 @@ const (
 	defaultGlobalQos     = false
 )
 
-type ConsumeOption struct {
-	f func(*consumeOptions)
-}
+type ConsumeOptionSetter func(*consumeOptions)
 
 type consumeOptions struct {
 	prefetchCount int
@@ -27,22 +25,22 @@ type consumeOptions struct {
 	globalQos     bool
 }
 
-func SetPrefetchCount(n int) ConsumeOption {
-	return ConsumeOption{func(o *consumeOptions) {
+func SetPrefetchCount(n int) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
 		o.prefetchCount = n
-	}}
+	}
 }
 
-func SetPrefetchSize(n int) ConsumeOption {
-	return ConsumeOption{func(o *consumeOptions) {
+func SetPrefetchSize(n int) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
 		o.prefetchSize = n
-	}}
+	}
 }
 
-func SetGlobalQos(a bool) ConsumeOption {
-	return ConsumeOption{func(o *consumeOptions) {
+func SetGlobalQos(a bool) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
 		o.globalQos = a
-	}}
+	}
 }
 
 type Consumer interface {
@@ -61,19 +59,19 @@ type consumer struct {
 	globalQos     bool
 }
 
-func buildConsumeOptions(options ...ConsumeOption) *consumeOptions {
+func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
 	o := &consumeOptions{
 		prefetchCount: defaultPrefetchCount,
 		prefetchSize:  defaultPrefetchSize,
 		globalQos:     defaultGlobalQos,
 	}
 	for _, option := range options {
-		option.f(o)
+		option(o)
 	}
 	return o
 }
 
-func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
+func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(context.Background())
 	o := buildConsumeOptions(options...)
@@ -89,7 +87,7 @@ func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
 	}, nil
 }
 
-func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOption) (Consumer, error) {
+func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
 	o := buildConsumeOptions(options...)
