@@ -254,7 +254,7 @@ func (p *publisher) reset(rebind bool) error {
 }
 
 type delayedPublisher struct {
-	m        sync.Mutex
+	m        *sync.Mutex
 	client   PublisherClient
 	sendChan Channel
 
@@ -278,7 +278,7 @@ func newDelayedPublisherWithClient(client PublisherClient, delayExchange string,
 	var m sync.Mutex
 
 	publisher := &delayedPublisher{
-		m:             m,
+		m:             &m,
 		client:        client,
 		delayExchange: delayExchange,
 		delayMS:       delayMS,
