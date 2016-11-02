@@ -11,6 +11,38 @@ import (
 	"golang.org/x/net/context"
 )
 
+const (
+	defaultPrefetchCount = 20
+	defaultPrefetchSize  = 0
+	defaultGlobalQos     = false
+)
+
+type ConsumeOptionSetter func(*consumeOptions)
+
+type consumeOptions struct {
+	prefetchCount int
+	prefetchSize  int
+	globalQos     bool
+}
+
+func SetPrefetchCount(n int) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
+		o.prefetchCount = n
+	}
+}
+
+func SetPrefetchSize(n int) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
+		o.prefetchSize = n
+	}
+}
+
+func SetGlobalQos(a bool) ConsumeOptionSetter {
+	return func(o *consumeOptions) {
+		o.globalQos = a
+	}
+}
+
 type Consumer interface {
 	Consume() (<-chan Job, <-chan error, error)
 	Stop() error
@@ -19,32 +51,55 @@ type Consumer interface {
 
 type consumer struct {
 	*client
-	channel Channel
-	ctx     context.Context
-	cancel  context.CancelFunc
+	channel       Channel
+	ctx           context.Context
+	cancel        context.CancelFunc
+	prefetchCount int
+	prefetchSize  int
+	globalQos     bool
 }
 
-func NewConsumer(conf Config) (Consumer, error) {
+func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
+	o := &consumeOptions{
+		prefetchCount: defaultPrefetchCount,
+		prefetchSize:  defaultPrefetchSize,
+		globalQos:     defaultGlobalQos,
+	}
+	for _, option := range options {
+		option(o)
+	}
+	return o
+}
+
+func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(context.Background())
+	o := buildConsumeOptions(options...)
 
 	return &consumer{
-		client:  c,
-		channel: nil,
-		ctx:     ctx,
-		cancel:  cancel,
+		client:        c,
+		channel:       nil,
+		ctx:           ctx,
+		cancel:        cancel,
+		prefetchCount: o.prefetchCount,
+		prefetchSize:  o.prefetchSize,
+		globalQos:     o.globalQos,
 	}, nil
 }
 
-func newConsumerWithContext(ctx context.Context, conf Config) (Consumer, error) {
+func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
+	o := buildConsumeOptions(options...)
 
 	return &consumer{
-		client:  c,
-		channel: nil,
-		ctx:     ctx,
-		cancel:  cancel,
+		client:        c,
+		channel:       nil,
+		ctx:           ctx,
+		cancel:        cancel,
+		prefetchCount: o.prefetchCount,
+		prefetchSize:  o.prefetchSize,
+		globalQos:     o.globalQos,
 	}, nil
 }
 
@@ -67,6 +122,11 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = ch.Qos(c.prefetchCount, c.prefetchSize, c.globalQos)
+	if err != nil {
+		return nil, err
+	}
+
 	c.channel = ch
 
 	q, err := c.channel.QueueDeclare(

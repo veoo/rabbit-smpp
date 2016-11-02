@@ -19,6 +19,7 @@ type Channel interface {
 	QueueInspect(string) (amqp.Queue, error)
 	Consume(string, string, bool, bool, bool, bool, amqp.Table) (<-chan amqp.Delivery, error)
 	Publish(string, string, bool, bool, amqp.Publishing) error
+	Qos(int, int, bool) error
 	Closer
 }
 
