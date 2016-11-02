@@ -27,7 +27,7 @@ type PublisherClient interface {
 }
 
 type publisherClient struct {
-	sm sync.Mutex
+	sm *sync.Mutex
 
 	config   Config
 	ampqConn *amqp.Connection
@@ -40,7 +40,7 @@ func newPublisherClient(conf Config) (*publisherClient, error) {
 	var m sync.Mutex
 
 	return &publisherClient{
-		sm:     m,
+		sm:     &m,
 		config: conf,
 	}, nil
 }
@@ -66,6 +66,7 @@ func (c *publisherClient) Bind() (chan *amqp.Error, error) {
 	errChan := conn.NotifyClose(errors)
 	c.ampqConn = conn
 
+	c.bound = true
 	return errChan, nil
 }
 
@@ -85,9 +86,7 @@ func (c *publisherClient) ReBind() (PublisherClient, chan *amqp.Error, error) {
 	defer c.sm.Unlock()
 
 	ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
-	failed := 0
 	for _ = range ticker.C {
-		failed++
 		newClient, err := newPublisherClient(c.config)
 		if err != nil {
 			continue
@@ -142,12 +141,12 @@ func runWithRecovery(runCmd func() error, onError func() error) error {
 		return err
 	}
 
-	err := runCmd()
-	return err
+	return runCmd()
+
 }
 
 type publisher struct {
-	m        sync.Mutex
+	m        *sync.Mutex
 	client   PublisherClient
 	sendChan Channel
 }
@@ -166,7 +165,7 @@ func newPublisherWithClient(client PublisherClient) (Publisher, error) {
 	var m sync.Mutex
 
 	publisher := &publisher{
-		m:      m,
+		m:      &m,
 		client: client,
 	}
 
@@ -255,11 +254,7 @@ func (p *publisher) reset(rebind bool) error {
 	}
 
 	// setup the queues
-	if err := p.queueSetup(); err != nil {
-		return err
-	}
-
-	return nil
+	return p.queueSetup()
 }
 
 type delayedPublisher struct {
