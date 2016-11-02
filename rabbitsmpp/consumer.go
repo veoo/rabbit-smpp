@@ -84,15 +84,26 @@ func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
 	}, nil
 }
 
-func newConsumerWithContext(ctx context.Context, conf Config) (Consumer, error) {
+func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOption) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
+	o := consumeOptions{
+		prefetchCount: defaultPrefetchCount,
+		prefetchSize:  defaultPrefetchSize,
+		globalQos:     defaultGlobalQos,
+	}
+	for _, option := range options {
+		option.f(&o)
+	}
 
 	return &consumer{
-		client:  c,
-		channel: nil,
-		ctx:     ctx,
-		cancel:  cancel,
+		client:        c,
+		channel:       nil,
+		ctx:           ctx,
+		cancel:        cancel,
+		prefetchCount: o.prefetchCount,
+		prefetchSize:  o.prefetchSize,
+		globalQos:     o.globalQos,
 	}, nil
 }
 
