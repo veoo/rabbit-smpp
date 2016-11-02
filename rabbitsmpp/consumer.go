@@ -12,10 +12,38 @@ import (
 )
 
 const (
-	prefetchCount = 20
-	prefetchSize  = 0
-	global        = false
+	defaultPrefetchCount = 20
+	defaultPrefetchSize  = 0
+	defaultGlobalQos     = false
 )
+
+type ConsumeOption struct {
+	f func(*consumeOptions)
+}
+
+type consumeOptions struct {
+	prefetchCount int
+	prefetchSize  int
+	globalQos     bool
+}
+
+func SetPrefetchCount(n int) ConsumeOption {
+	return ConsumeOption{func(o *consumeOptions) {
+		o.prefetchCount = n
+	}}
+}
+
+func SetPrefetchSize(n int) ConsumeOption {
+	return ConsumeOption{func(o *consumeOptions) {
+		o.prefetchSize = n
+	}}
+}
+
+func SetGlobalQos(a bool) ConsumeOption {
+	return ConsumeOption{func(o *consumeOptions) {
+		o.globalQos = a
+	}}
+}
 
 type Consumer interface {
 	Consume() (<-chan Job, <-chan error, error)
@@ -25,20 +53,34 @@ type Consumer interface {
 
 type consumer struct {
 	*client
-	channel Channel
-	ctx     context.Context
-	cancel  context.CancelFunc
+	channel       Channel
+	ctx           context.Context
+	cancel        context.CancelFunc
+	prefetchCount int
+	prefetchSize  int
+	globalQos     bool
 }
 
-func NewConsumer(conf Config) (Consumer, error) {
+func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(context.Background())
+	o := consumeOptions{
+		prefetchCount: defaultPrefetchCount,
+		prefetchSize:  defaultPrefetchSize,
+		globalQos:     defaultGlobalQos,
+	}
+	for _, option := range options {
+		option.f(&o)
+	}
 
 	return &consumer{
-		client:  c,
-		channel: nil,
-		ctx:     ctx,
-		cancel:  cancel,
+		client:        c,
+		channel:       nil,
+		ctx:           ctx,
+		cancel:        cancel,
+		prefetchCount: o.prefetchCount,
+		prefetchSize:  o.prefetchSize,
+		globalQos:     o.globalQos,
 	}, nil
 }
 
@@ -73,7 +115,7 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = ch.Qos(prefetchCount, prefetchSize, global)
+	err = ch.Qos(c.prefetchCount, c.prefetchSize, c.globalQos)
 	if err != nil {
 		return nil, err
 	}
