@@ -253,6 +253,11 @@ func (p *publisher) reset(rebind bool) error {
 	return p.queueSetup()
 }
 
+type DelayedPublisher interface {
+	Publisher
+	PublishWithDelay(Job, int) error
+}
+
 type delayedPublisher struct {
 	m        *sync.Mutex
 	client   PublisherClient
@@ -265,7 +270,7 @@ type delayedPublisher struct {
 // NewDelayedPublisher works the same way as the normal publisher except it pushes
 // its messages are sent to a delayExchange which keeps them there for delayMS time and then redirects
 // them to the conf.QueueName so consumers can start consuming them
-func NewDelayedPublisher(conf Config, delayExchange string, delayMS int) (Publisher, error) {
+func NewDelayedPublisher(conf Config, delayExchange string, delayMS int) (DelayedPublisher, error) {
 	client, err := newPublisherClient(conf)
 	if err != nil {
 		return nil, err
@@ -274,7 +279,7 @@ func NewDelayedPublisher(conf Config, delayExchange string, delayMS int) (Publis
 	return newDelayedPublisherWithClient(client, delayExchange, delayMS)
 }
 
-func newDelayedPublisherWithClient(client PublisherClient, delayExchange string, delayMS int) (Publisher, error) {
+func newDelayedPublisherWithClient(client PublisherClient, delayExchange string, delayMS int) (DelayedPublisher, error) {
 	var m sync.Mutex
 
 	publisher := &delayedPublisher{
@@ -377,6 +382,14 @@ func (p *delayedPublisher) Close() error {
 }
 
 func (p *delayedPublisher) Publish(j Job) error {
+	return p.publish(j, p.delayMS)
+}
+
+func (p *delayedPublisher) PublishWithDelay(j Job, delayMs int) error {
+	return p.publish(j, delayMs)
+}
+
+func (p *delayedPublisher) publish(j Job, delayMs int) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
@@ -393,7 +406,7 @@ func (p *delayedPublisher) Publish(j Job) error {
 			false,                // immediate
 			amqp.Publishing{
 				Headers: amqp.Table{
-					"x-delay": strconv.Itoa(p.delayMS),
+					"x-delay": strconv.Itoa(delayMs),
 				},
 				ContentType: "application/json",
 				Body:        bodyBytes,
