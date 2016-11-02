@@ -61,17 +61,22 @@ type consumer struct {
 	globalQos     bool
 }
 
-func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
-	c := NewClient(conf).(*client)
-	ctx, cancel := context.WithCancel(context.Background())
-	o := consumeOptions{
+func buildConsumeOptions(options ...ConsumeOption) *consumeOptions {
+	o := &consumeOptions{
 		prefetchCount: defaultPrefetchCount,
 		prefetchSize:  defaultPrefetchSize,
 		globalQos:     defaultGlobalQos,
 	}
 	for _, option := range options {
-		option.f(&o)
+		option.f(o)
 	}
+	return o
+}
+
+func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
+	c := NewClient(conf).(*client)
+	ctx, cancel := context.WithCancel(context.Background())
+	o := buildConsumeOptions(options...)
 
 	return &consumer{
 		client:        c,
@@ -87,14 +92,7 @@ func NewConsumer(conf Config, options ...ConsumeOption) (Consumer, error) {
 func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOption) (Consumer, error) {
 	c := NewClient(conf).(*client)
 	ctx, cancel := context.WithCancel(ctx)
-	o := consumeOptions{
-		prefetchCount: defaultPrefetchCount,
-		prefetchSize:  defaultPrefetchSize,
-		globalQos:     defaultGlobalQos,
-	}
-	for _, option := range options {
-		option.f(&o)
-	}
+	o := buildConsumeOptions(options...)
 
 	return &consumer{
 		client:        c,
