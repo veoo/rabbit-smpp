@@ -24,6 +24,7 @@ type Channel interface {
 
 type Client interface {
 	Bind() (chan *amqp.Error, error)
+	QueueName() string
 	Channel() (Channel, error)
 	Closer
 }
