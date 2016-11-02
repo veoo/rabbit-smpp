@@ -16,10 +16,6 @@ var (
 	errMaxBindretry = errors.New("max bind retry")
 )
 
-const (
-	defaultRebindTry = 5
-)
-
 // PublisherClient is same as Client interface but also support Rebind operation
 type PublisherClient interface {
 	Client
