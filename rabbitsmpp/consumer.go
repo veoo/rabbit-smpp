@@ -50,7 +50,7 @@ type Consumer interface {
 }
 
 type consumer struct {
-	*client
+	Client
 	channel       Channel
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -71,30 +71,30 @@ func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
 	return o
 }
 
-func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
-	c := NewClient(conf).(*client)
-	ctx, cancel := context.WithCancel(context.Background())
-	o := buildConsumeOptions(options...)
+type ConsumerClientFactory func() Client
 
-	return &consumer{
-		client:        c,
-		channel:       nil,
-		ctx:           ctx,
-		cancel:        cancel,
-		prefetchCount: o.prefetchCount,
-		prefetchSize:  o.prefetchSize,
-		globalQos:     o.globalQos,
-	}, nil
+func clientFactory(conf Config) ConsumerClientFactory {
+	return func() Client {
+		return NewClient(conf)
+	}
 }
 
-func newConsumerWithContext(ctx context.Context, conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
-	c := NewClient(conf).(*client)
+var defaultClientFactory = clientFactory
+
+func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
+	clientFactory := defaultClientFactory(conf)
+	ctx, _ := context.WithCancel(context.Background())
+
+	return NewConsumerWithContext(ctx, clientFactory, options...)
+}
+
+func NewConsumerWithContext(ctx context.Context, clientFactory ConsumerClientFactory, options ...ConsumeOptionSetter) (Consumer, error) {
+	client := clientFactory()
 	ctx, cancel := context.WithCancel(ctx)
 	o := buildConsumeOptions(options...)
 
 	return &consumer{
-		client:        c,
-		channel:       nil,
+		Client:        client,
 		ctx:           ctx,
 		cancel:        cancel,
 		prefetchCount: o.prefetchCount,
@@ -104,7 +104,7 @@ func newConsumerWithContext(ctx context.Context, conf Config, options ...Consume
 }
 
 func (c *consumer) ID() string {
-	return c.client.QueueName()
+	return c.Client.QueueName()
 }
 
 func (c *consumer) bindWithRetry() chan *amqp.Error {
@@ -182,8 +182,16 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 				log.Printf("EOF consuming for: %s", c.ID())
 				return
 			}
-			errChan <- err
 			log.Println("stopped consuming jobs:", err)
+
+			// we need this because sometimes we don't have a listener here so we don't
+			// want to block the whole consuming because we weren't able to send an error
+			select {
+			case errChan <- err:
+			default:
+				log.Println("no listener errChan skipping")
+			}
+
 			closeChan = c.bindWithRetry()
 			dlvChan, err = c.getConsumeChannel()
 			for err != nil {

@@ -22,16 +22,21 @@ type ConsumerContainer interface {
 // consumerContainer is a container that collects the data from all the consumer channels into 1
 // channel it's a fan-in pattern. You can add an remove consumers dynamically
 type consumerContainer struct {
-	consumers  map[string]Consumer
-	m          *sync.Mutex
-	wg         *sync.WaitGroup
-	Ctx        context.Context
-	stopper    context.CancelFunc
-	outJobChan chan Job
-	outErrChan chan error
+	consumerClientFactory func(conf Config) ConsumerClientFactory
+	consumers             map[string]Consumer
+	m                     *sync.Mutex
+	wg                    *sync.WaitGroup
+	Ctx                   context.Context
+	stopper               context.CancelFunc
+	outJobChan            chan Job
+	outErrChan            chan error
 }
 
 func NewContainer() ConsumerContainer {
+	return NewContainerWithClientFactory(defaultClientFactory)
+}
+
+func NewContainerWithClientFactory(clientFactory func(conf Config) ConsumerClientFactory) ConsumerContainer {
 	consumers := make(map[string]Consumer)
 	var m sync.Mutex
 	var wg sync.WaitGroup
@@ -42,13 +47,14 @@ func NewContainer() ConsumerContainer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &consumerContainer{
-		consumers:  consumers,
-		m:          &m,
-		wg:         &wg,
-		Ctx:        ctx,
-		stopper:    cancel,
-		outJobChan: outJobChan,
-		outErrChan: outErrChan,
+		consumerClientFactory: clientFactory,
+		consumers:             consumers,
+		m:                     &m,
+		wg:                    &wg,
+		Ctx:                   ctx,
+		stopper:               cancel,
+		outJobChan:            outJobChan,
+		outErrChan:            outErrChan,
 	}
 }
 
@@ -105,7 +111,7 @@ func (container *consumerContainer) RemoveStop(consumerID string) error {
 }
 
 func (container *consumerContainer) AddFromConfig(conf Config) (string, error) {
-	consumer, err := newConsumerWithContext(container.Ctx, conf)
+	consumer, err := NewConsumerWithContext(container.Ctx, container.consumerClientFactory(conf))
 	if err != nil {
 		return "", err
 	}
