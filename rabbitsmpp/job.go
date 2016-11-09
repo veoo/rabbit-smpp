@@ -9,16 +9,16 @@ import (
 )
 
 type Job struct {
-	PDUs       []pdu.Body        `json:"pdus"`
-	Attributes map[string]string `json:"attributes"`
+	PDUs       []pdu.Body  `json:"pdus"`
+	Attributes *Attributes `json:"attributes"`
 	delivery   *amqp.Delivery
 }
 
 // Since pdu.Body is an interface, we need an special method to pass a concrete type
 func (j *Job) UnmarshalJSON(b []byte) error {
 	s := &struct {
-		PDUs       []*pdu.Codec      `json:"pdus"`
-		Attributes map[string]string `json:"attributes"`
+		PDUs       []*pdu.Codec `json:"pdus"`
+		Attributes *Attributes  `json:"attributes"`
 	}{}
 
 	err := json.Unmarshal(b, &s)

@@ -86,10 +86,9 @@ func (s *ConsumerSuite) Test_StartStop() {
 		deliveryChan := make(chan amqp.Delivery)
 
 		go func() {
+			m := map[string]string{"systemID": "vodafone"}
 			job := Job{
-				Attributes: map[string]string{
-					"systemID": "vodafone",
-				},
+				Attributes: NewAttributes(m),
 			}
 
 			bodyBytes, err := json.Marshal(job)
@@ -116,7 +115,7 @@ func (s *ConsumerSuite) Test_StartStop() {
 
 	// Consume whatever you expect here
 	job := <-jobChan
-	assert.Equal(s.T(), job.Attributes["systemID"], "vodafone")
+	assert.Equal(s.T(), job.Attributes.Get("systemID"), "vodafone")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
