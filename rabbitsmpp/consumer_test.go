@@ -86,10 +86,9 @@ func (s *ConsumerSuite) Test_StartStop() {
 		deliveryChan := make(chan amqp.Delivery)
 
 		go func() {
-			attr := NewAttributes()
-			attr.Set("systemID", "vodafone")
+			m := map[string]string{"systemID": "vodafone"}
 			job := Job{
-				Attributes: attr,
+				Attributes: NewAttributes(m),
 			}
 
 			bodyBytes, err := json.Marshal(job)

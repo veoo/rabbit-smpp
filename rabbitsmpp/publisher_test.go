@@ -28,10 +28,9 @@ func TestPublisherSucc(t *testing.T) {
 	client.AssertNumberOfCalls(t, "Bind", 1)
 
 	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(nil)
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
 	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
@@ -80,10 +79,9 @@ func TestPublisherRetrySucc(t *testing.T) {
 	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
 	newMockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(nil)
 
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
 
@@ -114,10 +112,9 @@ func TestPublisherRetryFail(t *testing.T) {
 
 	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
 	client.On("ReBind").Return(nil, nil, errors.New("bind retry fail"))
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.Error(t, err)
 
@@ -159,10 +156,9 @@ func TestDelayedPublisherSucc(t *testing.T) {
 	client.AssertNumberOfCalls(t, "Bind", 1)
 
 	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(nil)
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
 	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
@@ -241,10 +237,9 @@ func TestDelayedPublisherRetrySucc(t *testing.T) {
 	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
 	newMockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(nil)
 
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
 
@@ -290,10 +285,9 @@ func TestDelayedPublisherRetryFail(t *testing.T) {
 	client.On("ReBind").Return(nil, nil, errors.New("rebind failed"))
 	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
 
-	attr := NewAttributes()
-	attr.Set("systemID", "mockID")
+	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
-		Attributes: attr,
+		Attributes: NewAttributes(m),
 	})
 	assert.Error(t, err)
 

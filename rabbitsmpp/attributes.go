@@ -10,9 +10,13 @@ type Attributes struct {
 	mutex sync.RWMutex
 }
 
-func NewAttributes() *Attributes {
+func NewAttributes(m map[string]string) *Attributes {
+	mp := map[string]string{}
+	for k, v := range m {
+		mp[k] = v
+	}
 	return &Attributes{
-		mp: map[string]string{},
+		mp: mp,
 	}
 }
 
