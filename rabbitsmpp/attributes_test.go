@@ -47,4 +47,10 @@ func Test_UnmarshalAttributes(t *testing.T) {
 	got = &Attributes{}
 	err = json.Unmarshal(jsonStr, got)
 	assert.Error(t, err)
+
+	jsonStr = []byte(`{"foo":"bar","this":"that"}`)
+	got = nil
+	err = json.Unmarshal(jsonStr, got)
+
+	assert.Error(t, err)
 }

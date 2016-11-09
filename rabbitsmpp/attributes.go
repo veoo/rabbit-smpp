@@ -66,6 +66,8 @@ func (a *Attributes) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
+	a.mutex.Lock()
 	a.mp = m
+	a.mutex.Unlock()
 	return nil
 }
