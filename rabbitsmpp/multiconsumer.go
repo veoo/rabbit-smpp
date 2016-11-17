@@ -17,6 +17,7 @@ type ConsumerContainer interface {
 	AddFromConfig(Config) (string, error)
 	AddRun(Consumer) error
 	RemoveStop(string) error
+	Exists(string) bool
 }
 
 // consumerContainer is a container that collects the data from all the consumer channels into 1
@@ -86,6 +87,14 @@ func (container *consumerContainer) add(consumer Consumer) error {
 
 	container.consumers[consumer.ID()] = consumer
 	return nil
+}
+
+func (container *consumerContainer) Exists(consumerID string) bool {
+	container.m.Lock()
+	defer container.m.Unlock()
+
+	_, ok := container.consumers[consumerID]
+	return ok
 }
 
 func (container *consumerContainer) RemoveStop(consumerID string) error {

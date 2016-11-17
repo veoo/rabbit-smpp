@@ -74,6 +74,9 @@ func (s *MultiConsumerSuite) TestAddConsumer() {
 	err = multi.AddRun(mockConsumer)
 	assert.Nil(s.T(), err)
 
+	// check if it's there
+	assert.True(s.T(), multi.Exists(mockConsumer.ID()))
+
 	// Add the same one again it should fail
 	err = multi.AddRun(mockConsumer)
 	assert.NotNil(s.T(), err)
