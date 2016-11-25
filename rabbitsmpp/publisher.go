@@ -32,7 +32,7 @@ type publisherClient struct {
 	closed bool
 }
 
-func newPublisherClient(conf Config) (*publisherClient, error) {
+func NewPublisherClient(conf Config) (*publisherClient, error) {
 	var m sync.Mutex
 
 	return &publisherClient{
@@ -83,7 +83,7 @@ func (c *publisherClient) ReBind() (PublisherClient, chan *amqp.Error, error) {
 
 	ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
 	for _ = range ticker.C {
-		newClient, err := newPublisherClient(c.config)
+		newClient, err := NewPublisherClient(c.config)
 		if err != nil {
 			continue
 		}
@@ -149,7 +149,7 @@ type publisher struct {
 
 // NewPublisher creates a new publisher with direct exchange
 func NewPublisher(conf Config) (Publisher, error) {
-	pubClient, err := newPublisherClient(conf)
+	pubClient, err := NewPublisherClient(conf)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ type delayedPublisher struct {
 // its messages are sent to a delayExchange which keeps them there for delayMS time and then redirects
 // them to the conf.QueueName so consumers can start consuming them
 func NewDelayedPublisher(conf Config, delayExchange string, delayMS int) (DelayedPublisher, error) {
-	client, err := newPublisherClient(conf)
+	client, err := NewPublisherClient(conf)
 	if err != nil {
 		return nil, err
 	}
