@@ -3,7 +3,6 @@ package rabbitsmpp
 import (
 	"encoding/json"
 	"errors"
-	"strconv"
 	"sync"
 
 	"github.com/cenk/backoff"
@@ -406,7 +405,7 @@ func (p *delayedPublisher) publish(j Job, delayMs int) error {
 			false,                // immediate
 			amqp.Publishing{
 				Headers: amqp.Table{
-					"x-delay": strconv.Itoa(delayMs),
+					"x-delay": int32(delayMs),
 				},
 				ContentType: "application/json",
 				Body:        bodyBytes,
