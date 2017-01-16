@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -57,6 +58,7 @@ type consumer struct {
 	prefetchCount int
 	prefetchSize  int
 	globalQos     bool
+	m             *sync.RWMutex
 }
 
 func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
@@ -100,6 +102,7 @@ func NewConsumerWithContext(ctx context.Context, clientFactory ConsumerClientFac
 		prefetchCount: o.prefetchCount,
 		prefetchSize:  o.prefetchSize,
 		globalQos:     o.globalQos,
+		m:             &sync.RWMutex{},
 	}, nil
 }
 
@@ -127,6 +130,9 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 		return nil, err
 	}
 
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	c.channel = ch
 
 	q, err := c.channel.QueueDeclare(
@@ -153,7 +159,7 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 }
 
 func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
-	if c.channel != nil {
+	if c.getChannel() != nil {
 		return nil, nil, errors.New("consumer already active")
 	}
 	closeChan, err := c.Bind()
@@ -169,11 +175,15 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 
 	go func() {
 		defer func() {
+			c.m.Lock()
+			defer c.m.Unlock()
 			_ = c.channel.Close()
 			c.channel = nil
+
+			close(jobChan)
+			close(errChan)
 		}()
-		defer close(jobChan)
-		defer close(errChan)
+
 		for {
 			err = c.consume(dlvChan, closeChan, jobChan)
 			// if consume returns without an error, means that it was terminated
@@ -224,10 +234,16 @@ func (c *consumer) consume(dlvChan <-chan amqp.Delivery, closeChan <-chan *amqp.
 }
 
 func (c *consumer) Stop() error {
-	if c.channel == nil {
+	if c.getChannel() == nil {
 		return nil
 	}
 	// Sends the stop signal
 	c.cancel()
 	return nil
+}
+
+func (c *consumer) getChannel() Channel {
+	c.m.RLock()
+	defer c.m.RUnlock()
+	return c.channel
 }
