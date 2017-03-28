@@ -166,11 +166,16 @@ func NewPublisher(conf Config) (Publisher, error) {
 	return newPublisherWithClient(pubClient)
 }
 
-func NewPublisherWithConn(conf Config, conn Conn) Publisher {
-	return &publisher{
+func NewPublisherWithConn(conf Config, conn Conn) (Publisher, error) {
+	p := &publisher{
 		m:      &sync.Mutex{},
 		client: newPublisherClientWithConn(conf, conn),
 	}
+	err := p.queueSetup()
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func newPublisherWithClient(client PublisherClient) (Publisher, error) {
