@@ -25,7 +25,7 @@ type publisherClient struct {
 	sm *sync.Mutex
 
 	config   Config
-	ampqConn *amqp.Connection
+	amqpConn Conn
 	bound    bool
 
 	closed bool
@@ -38,6 +38,16 @@ func newPublisherClient(conf Config) (*publisherClient, error) {
 		sm:     &m,
 		config: conf,
 	}, nil
+}
+
+func newPublisherClientWithConn(conf Config, conn Conn) *publisherClient {
+	var m sync.Mutex
+
+	return &publisherClient{
+		sm:       &m,
+		config:   conf,
+		amqpConn: conn,
+	}
 }
 
 func (c *publisherClient) Bind() (chan *amqp.Error, error) {
@@ -59,7 +69,7 @@ func (c *publisherClient) Bind() (chan *amqp.Error, error) {
 
 	errors := make(chan *amqp.Error)
 	errChan := conn.NotifyClose(errors)
-	c.ampqConn = conn
+	c.amqpConn = conn
 
 	c.bound = true
 	return errChan, nil
@@ -73,7 +83,7 @@ func (c *publisherClient) Channel() (Channel, error) {
 		return nil, errClientClosed
 	}
 
-	return c.ampqConn.Channel()
+	return c.amqpConn.Channel()
 }
 
 func (c *publisherClient) ReBind() (PublisherClient, chan *amqp.Error, error) {
@@ -110,7 +120,7 @@ func (c *publisherClient) Close() error {
 	}
 
 	c.closed = true
-	c.ampqConn.Close()
+	c.amqpConn.Close()
 	return nil
 }
 
@@ -154,6 +164,13 @@ func NewPublisher(conf Config) (Publisher, error) {
 	}
 
 	return newPublisherWithClient(pubClient)
+}
+
+func NewPublisherWithConn(conf Config, conn Conn) Publisher {
+	return &publisher{
+		m:      &sync.Mutex{},
+		client: newPublisherClientWithConn(conf, conn),
+	}
 }
 
 func newPublisherWithClient(client PublisherClient) (Publisher, error) {

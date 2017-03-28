@@ -12,6 +12,16 @@ type Closer interface {
 	Close() error
 }
 
+type Conn interface {
+	NotifyClose(chan *amqp.Error) chan *amqp.Error
+	Channel() (*amqp.Channel, error)
+	Close() error
+}
+
+func NewConn(url string) (Conn, error) {
+	return amqp.Dial(url)
+}
+
 type Channel interface {
 	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
 	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
@@ -32,11 +42,18 @@ type Client interface {
 
 type client struct {
 	config *Config
-	conn   *amqp.Connection
+	conn   Conn
 }
 
 func NewClient(conf Config) Client {
 	return &client{config: &conf}
+}
+
+func NewClientWithConn(conf Config, conn Conn) Client {
+	return &client{
+		conn:   conn,
+		config: &conf,
+	}
 }
 
 // Connect establishes the connection to the rabbit MQ
