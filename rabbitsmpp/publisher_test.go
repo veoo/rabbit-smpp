@@ -11,7 +11,7 @@ import (
 
 func TestPublisherSucc(t *testing.T) {
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 
@@ -38,7 +38,7 @@ func TestPublisherSucc(t *testing.T) {
 }
 
 func TestPublisherFail(t *testing.T) {
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(nil, errors.New("bind"))
 
 	publisher, err := newPublisherWithClient(client)
@@ -52,7 +52,7 @@ func TestPublisherFail(t *testing.T) {
 
 func TestPublisherRetrySucc(t *testing.T) {
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 
@@ -68,7 +68,7 @@ func TestPublisherRetrySucc(t *testing.T) {
 
 	client.AssertNumberOfCalls(t, "Bind", 1)
 
-	newMockPublisherClient := &MockPublisherClient{}
+	newMockPublisherClient := &MockClient{}
 	newMockPublisherClient.On("QueueName").Return("mockQueue")
 	newMockChannel := &MockChannel{}
 	newMockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
@@ -94,7 +94,7 @@ func TestPublisherRetrySucc(t *testing.T) {
 
 func TestPublisherRetryFail(t *testing.T) {
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 
@@ -127,7 +127,7 @@ func TestDelayedPublisherSucc(t *testing.T) {
 	delayExchange := "mockEchange"
 	delayMS := 1000
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 
@@ -169,7 +169,7 @@ func TestDelayedPublisherFail(t *testing.T) {
 	delayExchange := "mockEchange"
 	delayMS := 1000
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(nil, errors.New("bind"))
 
 	publisher, err := newDelayedPublisherWithClient(client, delayExchange, delayMS)
@@ -185,7 +185,7 @@ func TestDelayedPublisherRetrySucc(t *testing.T) {
 	delayExchange := "mockEchange"
 	delayMS := 1000
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 
@@ -213,7 +213,7 @@ func TestDelayedPublisherRetrySucc(t *testing.T) {
 
 	client.AssertNumberOfCalls(t, "Bind", 1)
 
-	newMockPublisherClient := &MockPublisherClient{}
+	newMockPublisherClient := &MockClient{}
 	newMockPublisherClient.On("QueueName").Return("mockQueue")
 	newMockChannel := &MockChannel{}
 	newMockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{
@@ -254,7 +254,7 @@ func TestDelayedPublisherRetryFail(t *testing.T) {
 	delayExchange := "mockEchange"
 	delayMS := 1000
 
-	client := &MockPublisherClient{}
+	client := &MockClient{}
 	client.On("Bind").Return(make(chan *amqp.Error), nil)
 	client.On("QueueName").Return("mockQueue")
 

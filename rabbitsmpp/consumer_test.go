@@ -75,8 +75,8 @@ func (s *ConsumerSuite) Test_StartStop() {
 	mockClient := &MockClient{}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	consumer, err := NewConsumerWithContext(ctx, func() Client {
-		return mockClient
+	consumer, err := NewConsumerWithContext(queueName, ctx, func() (Client, error) {
+		return mockClient, nil
 	})
 
 	mockClient.On("QueueName").Return(queueName)
@@ -155,13 +155,14 @@ func (s *ConsumerSuite) Test_BindRetrySucc() {
 	mockClient := &MockClient{}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	consumer, err := NewConsumerWithContext(ctx, func() Client {
-		return mockClient
+	consumer, err := NewConsumerWithContext(queueName, ctx, func() (Client, error) {
+		return mockClient, nil
 	})
 
 	mockClient.On("QueueName").Return(queueName)
 	closeChan := make(chan *amqp.Error)
-	mockClient.On("Bind").Return(closeChan, nil)
+	mockClient.On("GetCloseChan").Return(closeChan)
+	mockClient.On("Config").Return(Config{})
 
 	deliveryHandler := func() <-chan amqp.Delivery {
 		deliveryChan := make(chan amqp.Delivery)

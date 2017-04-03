@@ -120,7 +120,7 @@ func (container *consumerContainer) RemoveStop(consumerID string) error {
 }
 
 func (container *consumerContainer) AddFromConfig(conf Config) (string, error) {
-	consumer, err := NewConsumerWithContext(container.Ctx, container.consumerClientFactory(conf))
+	consumer, err := NewConsumerWithContext(conf.QueueName, container.Ctx, container.consumerClientFactory(conf))
 	if err != nil {
 		return "", err
 	}
