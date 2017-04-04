@@ -23,7 +23,7 @@ type ConsumerContainer interface {
 // consumerContainer is a container that collects the data from all the consumer channels into 1
 // channel it's a fan-in pattern. You can add an remove consumers dynamically
 type consumerContainer struct {
-	consumerClientFactory func(conf Config) ConsumerClientFactory
+	consumerClientFactory func(conf Config) ClientFactory
 	consumers             map[string]Consumer
 	m                     *sync.Mutex
 	wg                    *sync.WaitGroup
@@ -37,7 +37,7 @@ func NewContainer() ConsumerContainer {
 	return NewContainerWithClientFactory(defaultClientFactory)
 }
 
-func NewContainerWithClientFactory(clientFactory func(conf Config) ConsumerClientFactory) ConsumerContainer {
+func NewContainerWithClientFactory(clientFactory func(conf Config) ClientFactory) ConsumerContainer {
 	consumers := make(map[string]Consumer)
 	var m sync.Mutex
 	var wg sync.WaitGroup

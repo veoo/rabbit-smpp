@@ -98,6 +98,16 @@ type Client interface {
 	Closer
 }
 
+type ClientFactory func() (Client, error)
+
+func clientFactory(conf Config) ClientFactory {
+	return func() (Client, error) {
+		return NewClient(conf)
+	}
+}
+
+var defaultClientFactory = clientFactory
+
 type client struct {
 	config Config
 }

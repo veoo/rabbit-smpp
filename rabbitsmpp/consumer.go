@@ -52,6 +52,7 @@ type Consumer interface {
 
 type consumer struct {
 	Client
+	clientFactory ClientFactory
 	channel       Channel
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -74,16 +75,6 @@ func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
 	return o
 }
 
-type ConsumerClientFactory func() (Client, error)
-
-func clientFactory(conf Config) ConsumerClientFactory {
-	return func() (Client, error) {
-		return NewClient(conf)
-	}
-}
-
-var defaultClientFactory = clientFactory
-
 func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	clientFactory := defaultClientFactory(conf)
 	ctx, _ := context.WithCancel(context.Background())
@@ -91,7 +82,7 @@ func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) 
 	return NewConsumerWithContext(conf.QueueName, ctx, clientFactory, options...)
 }
 
-func NewConsumerWithContext(queueName string, ctx context.Context, clientFactory ConsumerClientFactory, options ...ConsumeOptionSetter) (Consumer, error) {
+func NewConsumerWithContext(queueName string, ctx context.Context, clientFactory ClientFactory, options ...ConsumeOptionSetter) (Consumer, error) {
 	client, err := clientFactory()
 	if err != nil {
 		return nil, err
@@ -102,6 +93,7 @@ func NewConsumerWithContext(queueName string, ctx context.Context, clientFactory
 
 	return &consumer{
 		Client:        client,
+		clientFactory: clientFactory,
 		ctx:           ctx,
 		cancel:        cancel,
 		prefetchCount: o.prefetchCount,
@@ -117,12 +109,11 @@ func (c *consumer) ID() string {
 }
 
 func (c *consumer) waitOnClosedClient() {
-	conf := c.Client.Config()
-	client, err := NewClient(conf)
+	client, err := c.clientFactory()
 	for err != nil {
 		log.Println("Failed to recreate client:", err)
 		time.Sleep(5 * time.Second)
-		client, err = NewClient(conf)
+		client, err = c.clientFactory()
 	}
 	c.Client = client
 }

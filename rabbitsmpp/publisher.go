@@ -14,87 +14,6 @@ var (
 	errMaxBindretry = errors.New("max bind retry")
 )
 
-// func (c *publisherClient) Bind() (chan *amqp.Error, error) {
-// 	c.sm.Lock()
-// 	defer c.sm.Unlock()
-
-// 	if c.bound {
-// 		return nil, errAlreadyBound
-// 	}
-
-// 	if c.closed {
-// 		return nil, errClientClosed
-// 	}
-
-// 	conn, err := amqp.Dial(c.config.URL)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	errors := make(chan *amqp.Error)
-// 	errChan := conn.NotifyClose(errors)
-// 	c.ampqConn = conn
-
-// 	c.bound = true
-// 	return errChan, nil
-// }
-
-// func (c *publisherClient) Channel() (Channel, error) {
-// 	c.sm.Lock()
-// 	defer c.sm.Unlock()
-
-// 	if c.closed {
-// 		return nil, errClientClosed
-// 	}
-
-// 	return c.ampqConn.Channel()
-// }
-
-// func (c *publisherClient) ReBind() (Client, chan *amqp.Error, error) {
-// 	c.sm.Lock()
-// 	defer c.sm.Unlock()
-
-// 	ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
-// 	for _ = range ticker.C {
-// 		newClient, err := newPublisherClient(c.config)
-// 		if err != nil {
-// 			continue
-// 		}
-
-// 		errChan, err := newClient.Bind()
-// 		if err != nil {
-// 			continue
-// 		}
-
-// 		// stop the ticker
-// 		ticker.Stop()
-// 		return newClient, errChan, nil
-// 	}
-
-// 	return nil, nil, errClientClosed
-
-// }
-
-// func (c *publisherClient) Close() error {
-// 	c.sm.Lock()
-// 	defer c.sm.Unlock()
-
-// 	if c.closed {
-// 		return nil
-// 	}
-
-// 	c.closed = true
-// 	c.ampqConn.Close()
-// 	return nil
-// }
-
-// func (c *publisherClient) QueueName() string {
-// 	c.sm.Lock()
-// 	defer c.sm.Unlock()
-
-// 	return c.config.QueueName
-// }
-
 // Publisher is interface for publishing data to the queues
 type Publisher interface {
 	Publish(Job) error
@@ -115,32 +34,33 @@ func runWithRecovery(runCmd func() error, onError func() error) error {
 }
 
 type publisher struct {
-	m         *sync.Mutex
-	client    Client
-	sendChan  Channel
-	queueName string
+	m             *sync.Mutex
+	client        Client
+	clientFactory ClientFactory
+	sendChan      Channel
+	queueName     string
 }
 
 // NewPublisher creates a new publisher with direct exchange
 func NewPublisher(conf Config) (Publisher, error) {
-	pubClient, err := NewClient(conf)
+	clientFactory := defaultClientFactory(conf)
+	return newPublisherWithClientFactory(clientFactory)
+}
+
+func newPublisherWithClientFactory(clientFactory ClientFactory) (Publisher, error) {
+	var m sync.Mutex
+	client, err := clientFactory()
 	if err != nil {
 		return nil, err
 	}
-
-	return newPublisherWithClient(pubClient)
-}
-
-func newPublisherWithClient(client Client) (Publisher, error) {
-	var m sync.Mutex
-
 	publisher := &publisher{
-		m:      &m,
-		client: client,
+		m:             &m,
+		client:        client,
+		clientFactory: clientFactory,
+		queueName:     client.Config().QueueName,
 	}
 
-	// setup all the connections here
-	if err := publisher.reset(); err != nil {
+	if err := publisher.queueSetup(); err != nil {
 		return nil, err
 	}
 
@@ -208,7 +128,7 @@ func (p *publisher) Publish(j Job) error {
 }
 
 func (p *publisher) reset() error {
-	client, err := NewClient(p.client.Config())
+	client, err := p.clientFactory()
 	if err != nil {
 		return err
 	}
@@ -224,10 +144,11 @@ type DelayedPublisher interface {
 }
 
 type delayedPublisher struct {
-	m         *sync.Mutex
-	client    Client
-	sendChan  Channel
-	queueName string
+	m             *sync.Mutex
+	clientFactory ClientFactory
+	client        Client
+	sendChan      Channel
+	queueName     string
 
 	delayExchange string
 	delayMS       int
@@ -237,26 +158,26 @@ type delayedPublisher struct {
 // its messages are sent to a delayExchange which keeps them there for delayMS time and then redirects
 // them to the conf.QueueName so consumers can start consuming them
 func NewDelayedPublisher(conf Config, delayExchange string, delayMS int) (DelayedPublisher, error) {
-	client, err := NewClient(conf)
+	clientFactory := defaultClientFactory(conf)
+	return newDelayedPublisherWithClientFactory(clientFactory, delayExchange, delayMS)
+}
+
+func newDelayedPublisherWithClientFactory(clientFactory ClientFactory, delayExchange string, delayMS int) (DelayedPublisher, error) {
+	var m sync.Mutex
+	client, err := clientFactory()
 	if err != nil {
 		return nil, err
 	}
-
-	return newDelayedPublisherWithClient(client, delayExchange, delayMS)
-}
-
-func newDelayedPublisherWithClient(client Client, delayExchange string, delayMS int) (DelayedPublisher, error) {
-	var m sync.Mutex
-
 	publisher := &delayedPublisher{
 		m:             &m,
 		client:        client,
+		clientFactory: clientFactory,
+		queueName:     client.Config().QueueName,
 		delayExchange: delayExchange,
 		delayMS:       delayMS,
 	}
 
-	// setup all the connections here
-	if err := publisher.reset(); err != nil {
+	if err := publisher.queueSetup(); err != nil {
 		return nil, err
 	}
 
@@ -264,7 +185,7 @@ func newDelayedPublisherWithClient(client Client, delayExchange string, delayMS 
 }
 
 func (p *delayedPublisher) reset() error {
-	client, err := NewClient(p.client.Config())
+	client, err := p.clientFactory()
 	if err != nil {
 		return err
 	}
@@ -297,6 +218,7 @@ func (p *delayedPublisher) queueSetup() error {
 	)
 
 	if err != nil {
+		p.Close()
 		return err
 	}
 
@@ -320,6 +242,7 @@ func (p *delayedPublisher) queueSetup() error {
 		nil)
 
 	if err != nil {
+		p.Close()
 		return err
 	}
 
