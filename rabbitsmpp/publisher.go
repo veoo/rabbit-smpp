@@ -70,8 +70,9 @@ func newPublisherWithClientFactory(clientFactory ClientFactory) (Publisher, erro
 func (p *publisher) Close() error {
 	p.m.Lock()
 	defer p.m.Unlock()
-	p.sendChan.Close()
-	p.client.Close()
+	if p.sendChan != nil {
+		p.sendChan.Close()
+	}
 	return nil
 }
 
@@ -253,7 +254,6 @@ func (p *delayedPublisher) Close() error {
 	p.m.Lock()
 	defer p.m.Unlock()
 	p.sendChan.Close()
-	p.client.Close()
 	return nil
 }
 
