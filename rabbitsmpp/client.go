@@ -17,6 +17,7 @@ var conn struct {
 func initConn(url string) error {
 	conn.Lock()
 	if conn.conn != nil {
+		conn.Unlock()
 		return nil
 	}
 	conn.Unlock()
