@@ -16,17 +16,23 @@ var conn struct {
 
 func initConn(url string) error {
 	conn.Lock()
-	defer conn.Unlock()
 	if conn.conn != nil {
 		return nil
 	}
+	conn.Unlock()
+	return startConn(url)
+}
+
+func startConn(url string) error {
 	c, err := amqp.Dial(url)
 	if err != nil {
 		return err
 	}
+	conn.Lock()
 	conn.conn = c
 	conn.url = url
-	go rebindOnClose()
+	conn.Unlock()
+	rebindOnClose()
 	return nil
 }
 
@@ -35,24 +41,24 @@ func rebindOnClose() {
 	errors := make(chan *amqp.Error)
 	errChan := conn.conn.NotifyClose(errors)
 	conn.Unlock()
+	go func() {
+		closeNotification := <-errChan
+		log.Println("connection was closed:", closeNotification, "rebinding...")
 
-	closeNotification := <-errChan
-	log.Println("connection was closed:", closeNotification, "rebinding...")
+		ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
+		var err error
+		for _ = range ticker.C {
+			err = startConn(conn.url)
+			if err != nil {
+				continue
+			}
 
-	ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
-	var err error
-	for _ = range ticker.C {
-		err = initConn(conn.url)
-		if err != nil {
-			continue
+			// stop the ticker
+			ticker.Stop()
+			return
 		}
-
-		// stop the ticker
-		ticker.Stop()
-		return
-	}
-
-	log.Fatal("Failed to rebind connection:", err)
+		log.Fatal("Failed to rebind connection:", err)
+	}()
 }
 
 func closeConn() error {
@@ -61,7 +67,9 @@ func closeConn() error {
 	if conn.conn == nil {
 		return nil
 	}
-	return conn.conn.Close()
+	err := conn.conn.Close()
+	conn.conn = nil
+	return err
 }
 
 func getConn() *amqp.Connection {

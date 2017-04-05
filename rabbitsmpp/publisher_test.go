@@ -39,7 +39,6 @@ func TestPublisherSucc(t *testing.T) {
 func TestPublisherFail(t *testing.T) {
 	mockClient := &MockClient{}
 	queueName := "mockQueue"
-	mockClient.On("Close").Return(nil)
 	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
@@ -189,7 +188,6 @@ func TestDelayedPublisherFail(t *testing.T) {
 	queueName := "mockQueue"
 
 	mockClient := &MockClient{}
-	mockClient.On("Close").Return(nil)
 	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
