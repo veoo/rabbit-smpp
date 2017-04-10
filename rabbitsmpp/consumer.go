@@ -52,12 +52,14 @@ type Consumer interface {
 
 type consumer struct {
 	Client
+	clientFactory ClientFactory
 	channel       Channel
 	ctx           context.Context
 	cancel        context.CancelFunc
 	prefetchCount int
 	prefetchSize  int
 	globalQos     bool
+	queueName     string
 	m             *sync.RWMutex
 }
 
@@ -73,51 +75,47 @@ func buildConsumeOptions(options ...ConsumeOptionSetter) *consumeOptions {
 	return o
 }
 
-type ConsumerClientFactory func() Client
-
-func clientFactory(conf Config) ConsumerClientFactory {
-	return func() Client {
-		return NewClient(conf)
-	}
-}
-
-var defaultClientFactory = clientFactory
-
 func NewConsumer(conf Config, options ...ConsumeOptionSetter) (Consumer, error) {
 	clientFactory := defaultClientFactory(conf)
 	ctx, _ := context.WithCancel(context.Background())
 
-	return NewConsumerWithContext(ctx, clientFactory, options...)
+	return NewConsumerWithContext(conf.QueueName, ctx, clientFactory, options...)
 }
 
-func NewConsumerWithContext(ctx context.Context, clientFactory ConsumerClientFactory, options ...ConsumeOptionSetter) (Consumer, error) {
-	client := clientFactory()
+func NewConsumerWithContext(queueName string, ctx context.Context, clientFactory ClientFactory, options ...ConsumeOptionSetter) (Consumer, error) {
+	client, err := clientFactory()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	o := buildConsumeOptions(options...)
 
 	return &consumer{
 		Client:        client,
+		clientFactory: clientFactory,
 		ctx:           ctx,
 		cancel:        cancel,
 		prefetchCount: o.prefetchCount,
 		prefetchSize:  o.prefetchSize,
 		globalQos:     o.globalQos,
+		queueName:     queueName,
 		m:             &sync.RWMutex{},
 	}, nil
 }
 
 func (c *consumer) ID() string {
-	return c.Client.QueueName()
+	return c.queueName
 }
 
-func (c *consumer) bindWithRetry() chan *amqp.Error {
-	closeChan, err := c.Bind()
+func (c *consumer) waitOnClosedClient() {
+	client, err := c.clientFactory()
 	for err != nil {
-		log.Println("Failed to bind consumer:", err)
+		log.Println("Failed to recreate client:", err)
 		time.Sleep(5 * time.Second)
-		closeChan, err = c.Bind()
+		client, err = c.clientFactory()
 	}
-	return closeChan
+	c.Client = client
 }
 
 func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
@@ -136,12 +134,12 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	c.channel = ch
 
 	q, err := c.channel.QueueDeclare(
-		c.QueueName(), // name
-		true,          // durable
-		false,         // delete when unused
-		false,         // exclusive
-		false,         // no-wait
-		nil,           // arguments
+		c.queueName, // name
+		true,        // durable
+		false,       // delete when unused
+		false,       // exclusive
+		false,       // no-wait
+		nil,         // arguments
 	)
 	if err != nil {
 		return nil, err
@@ -162,10 +160,7 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 	if c.getChannel() != nil {
 		return nil, nil, errors.New("consumer already active")
 	}
-	closeChan, err := c.Bind()
-	if err != nil {
-		return nil, nil, err
-	}
+	closeChan := c.Client.GetCloseChan()
 	dlvChan, err := c.getConsumeChannel()
 	if err != nil {
 		return nil, nil, err
@@ -202,7 +197,8 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 				log.Println("no listener errChan skipping")
 			}
 
-			closeChan = c.bindWithRetry()
+			c.waitOnClosedClient()
+			closeChan = c.Client.GetCloseChan()
 			dlvChan, err = c.getConsumeChannel()
 			for err != nil {
 				time.Sleep(5 * time.Second)

@@ -75,12 +75,14 @@ func (s *ConsumerSuite) Test_StartStop() {
 	mockClient := &MockClient{}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	consumer, err := NewConsumerWithContext(ctx, func() Client {
-		return mockClient
+	consumer, err := NewConsumerWithContext(queueName, ctx, func() (Client, error) {
+		return mockClient, nil
 	})
 
 	mockClient.On("QueueName").Return(queueName)
 	mockClient.On("Bind").Return(make(chan *amqp.Error), nil)
+	closeChan := make(chan *amqp.Error)
+	mockClient.On("GetCloseChan").Return(closeChan)
 
 	deliveryHandler := func() <-chan amqp.Delivery {
 		deliveryChan := make(chan amqp.Delivery)
@@ -137,16 +139,14 @@ func (s *ConsumerSuite) Test_StartStop() {
 	// now stop the consumer and the WaitGroup should finish as well because jobChan will be closed
 	cancel()
 	wg.Wait()
-	// Do a few assertions here to make sure !
 
-	mockClient.AssertNumberOfCalls(s.T(), "Bind", 1)
+	// Do a few assertions here to make sure !
 	mockClient.AssertNumberOfCalls(s.T(), "Channel", 1)
 
 	mockChannel.AssertNumberOfCalls(s.T(), "Close", 1)
 	mockChannel.AssertNumberOfCalls(s.T(), "Consume", 1)
 	mockChannel.AssertNumberOfCalls(s.T(), "Qos", 1)
 	mockChannel.AssertNumberOfCalls(s.T(), "QueueDeclare", 1)
-
 }
 
 func (s *ConsumerSuite) Test_BindRetrySucc() {
@@ -155,13 +155,14 @@ func (s *ConsumerSuite) Test_BindRetrySucc() {
 	mockClient := &MockClient{}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	consumer, err := NewConsumerWithContext(ctx, func() Client {
-		return mockClient
+	consumer, err := NewConsumerWithContext(queueName, ctx, func() (Client, error) {
+		return mockClient, nil
 	})
 
 	mockClient.On("QueueName").Return(queueName)
 	closeChan := make(chan *amqp.Error)
-	mockClient.On("Bind").Return(closeChan, nil)
+	mockClient.On("GetCloseChan").Return(closeChan)
+	mockClient.On("Config").Return(Config{})
 
 	deliveryHandler := func() <-chan amqp.Delivery {
 		deliveryChan := make(chan amqp.Delivery)
@@ -207,9 +208,8 @@ func (s *ConsumerSuite) Test_BindRetrySucc() {
 	// now stop the consumer and the WaitGroup should finish as well because jobChan will be closed
 	cancel()
 	wg.Wait()
-	// Do a few assertions here to make sure !
 
-	mockClient.AssertNumberOfCalls(s.T(), "Bind", 2)
+	// Do a few assertions here to make sure !
 	mockClient.AssertNumberOfCalls(s.T(), "Channel", 2)
 
 	mockChannel.AssertNumberOfCalls(s.T(), "Close", 1)

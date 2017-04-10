@@ -10,129 +10,145 @@ import (
 )
 
 func TestPublisherSucc(t *testing.T) {
-
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	queueName := "mockQueue"
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
 
-	client.On("Channel").Return(mockChannel, nil)
+	mockClient.On("Channel").Return(mockChannel, nil)
 
-	publisher, err := newPublisherWithClient(client)
+	publisher, err := newPublisherWithClientFactory(func() (Client, error) {
+		return mockClient, nil
+	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, publisher)
 
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
-	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(nil)
+	mockChannel.On("Publish", "", queueName, false, false, mock.Anything).Return(nil).Once()
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
-
+	mockChannel.AssertExpectations(t)
+	mockClient.AssertExpectations(t)
 }
 
 func TestPublisherFail(t *testing.T) {
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(nil, errors.New("bind"))
+	mockClient := &MockClient{}
+	queueName := "mockQueue"
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
-	publisher, err := newPublisherWithClient(client)
+	mockChannel := &MockChannel{}
+	mockChannel.On("Close").Return(nil)
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{}, errors.New("some error"))
+	mockClient.On("Channel").Return(mockChannel, nil)
+
+	publisher, err := newPublisherWithClientFactory(func() (Client, error) {
+		return mockClient, nil
+	})
 
 	assert.Error(t, err)
 	assert.Nil(t, publisher)
-
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
+	mockChannel.AssertExpectations(t)
+	mockClient.AssertExpectations(t)
 }
 
 func TestPublisherRetrySucc(t *testing.T) {
-
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	queueName := "mockQueue"
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
 
-	client.On("Channel").Return(mockChannel, nil)
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
+	mockClient.On("Channel").Return(mockChannel, nil)
 
-	publisher, err := newPublisherWithClient(client)
+	newMockChannel := &MockChannel{}
+	newMockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
+	mockChannel.On("Publish", "", queueName, false, false, mock.Anything).Return(errors.New("conn closed")).Once()
+	newMockChannel.On("Publish", "", queueName, false, false, mock.Anything).Return(nil).Once()
+
+	newMockClient := &MockClient{}
+	newMockClient.On("Channel").Return(newMockChannel, nil).Once()
+
+	try := 0
+	publisher, err := newPublisherWithClientFactory(func() (Client, error) {
+		if try == 0 {
+			try++
+			return mockClient, nil
+		} else {
+			try++
+			return newMockClient, nil
+		}
+	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, publisher)
-
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
-	newMockPublisherClient := &MockPublisherClient{}
-	newMockPublisherClient.On("QueueName").Return("mockQueue")
-	newMockChannel := &MockChannel{}
-	newMockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
-	newMockPublisherClient.On("Channel").Return(newMockChannel, nil)
-
-	client.On("ReBind").Return(newMockPublisherClient, nil, nil)
-
-	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
-	newMockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(nil)
 
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
+	assert.Equal(t, 2, try)
 
-	client.AssertNumberOfCalls(t, "ReBind", 1)
-	newMockPublisherClient.AssertNumberOfCalls(t, "Channel", 1)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
-	newMockChannel.AssertNumberOfCalls(t, "Publish", 1)
-
+	mockClient.AssertExpectations(t)
+	newMockClient.AssertExpectations(t)
+	mockChannel.AssertExpectations(t)
+	newMockChannel.AssertExpectations(t)
 }
 
 func TestPublisherRetryFail(t *testing.T) {
+	queueName := "mockQueue"
 
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{}, nil)
 
-	client.On("Channel").Return(mockChannel, nil)
+	mockClient.On("Channel").Return(mockChannel, nil)
 
-	publisher, err := newPublisherWithClient(client)
+	try := 0
+	publisher, err := newPublisherWithClientFactory(func() (Client, error) {
+		if try == 0 {
+			try++
+			return mockClient, nil
+		} else {
+			try++
+			return nil, errors.New("error getting client")
+		}
+	})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, publisher)
 
-	client.AssertNumberOfCalls(t, "Bind", 1)
+	mockChannel.On("Publish", "", queueName, false, false, mock.Anything).Return(errors.New("conn closed")).Once()
 
-	mockChannel.On("Publish", "", "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
-	client.On("ReBind").Return(nil, nil, errors.New("bind retry fail"))
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
+	assert.Equal(t, 2, try)
 	assert.Error(t, err)
 
-	client.AssertNumberOfCalls(t, "ReBind", 1)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
-
+	mockClient.AssertExpectations(t)
+	mockChannel.AssertExpectations(t)
 }
 
 func TestDelayedPublisherSucc(t *testing.T) {
-	delayExchange := "mockEchange"
+	delayExchange := "mockExchange"
 	delayMS := 1000
+	queueName := "mockQueue"
 
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{
 		Name: "mockQueue",
 	}, nil)
 	mockChannel.On("ExchangeDeclare", delayExchange, "x-delayed-message",
@@ -144,53 +160,62 @@ func TestDelayedPublisherSucc(t *testing.T) {
 			"x-delayed-type": "direct",
 		}).Return(nil)
 
-	mockChannel.On("QueueBind", "mockQueue", "mockQueue", delayExchange, false, mock.Anything).Return(nil)
+	mockChannel.On("QueueBind", queueName, queueName, delayExchange, false, mock.Anything).Return(nil)
 
-	client.On("Channel").Return(mockChannel, nil)
-
-	publisher, err := newDelayedPublisherWithClient(client, delayExchange, delayMS)
+	mockClient.On("Channel").Return(mockChannel, nil)
+	factory := func() (Client, error) {
+		return mockClient, nil
+	}
+	publisher, err := newDelayedPublisherWithClientFactory(factory, delayExchange, delayMS)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, publisher)
 
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
-	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(nil)
+	mockChannel.On("Publish", delayExchange, queueName, false, false, mock.Anything).Return(nil).Once()
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
 
+	mockChannel.AssertExpectations(t)
+	mockClient.AssertExpectations(t)
 }
 
 func TestDelayedPublisherFail(t *testing.T) {
-	delayExchange := "mockEchange"
+	delayExchange := "mockExchange"
 	delayMS := 1000
+	queueName := "mockQueue"
 
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(nil, errors.New("bind"))
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
-	publisher, err := newDelayedPublisherWithClient(client, delayExchange, delayMS)
+	mockChannel := &MockChannel{}
+	mockChannel.On("Close").Return(nil)
+	mockChannel.On("ExchangeDeclare", delayExchange, "x-delayed-message", true, false, false, true, mock.Anything).Return(errors.New("some error"))
+	mockClient.On("Channel").Return(mockChannel, nil)
+	factory := func() (Client, error) {
+		return mockClient, nil
+	}
+	publisher, err := newDelayedPublisherWithClientFactory(factory, delayExchange, delayMS)
 
 	assert.Error(t, err)
 	assert.Nil(t, publisher)
 
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
+	mockChannel.AssertExpectations(t)
+	mockClient.AssertExpectations(t)
 }
 
 func TestDelayedPublisherRetrySucc(t *testing.T) {
-	delayExchange := "mockEchange"
+	delayExchange := "mockExchange"
 	delayMS := 1000
+	queueName := "mockQueue"
 
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{
 		Name: "mockQueue",
 	}, nil)
 	mockChannel.On("ExchangeDeclare", delayExchange, "x-delayed-message",
@@ -202,22 +227,13 @@ func TestDelayedPublisherRetrySucc(t *testing.T) {
 			"x-delayed-type": "direct",
 		}).Return(nil)
 
-	mockChannel.On("QueueBind", "mockQueue", "mockQueue", delayExchange, false, mock.Anything).Return(nil)
+	mockChannel.On("QueueBind", queueName, queueName, delayExchange, false, mock.Anything).Return(nil)
 
-	client.On("Channel").Return(mockChannel, nil)
+	mockClient.On("Channel").Return(mockChannel, nil)
 
-	publisher, err := newDelayedPublisherWithClient(client, delayExchange, delayMS)
-
-	assert.NoError(t, err)
-	assert.NotNil(t, publisher)
-
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
-	newMockPublisherClient := &MockPublisherClient{}
-	newMockPublisherClient.On("QueueName").Return("mockQueue")
 	newMockChannel := &MockChannel{}
-	newMockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{
-		Name: "mockQueue",
+	newMockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{
+		Name: queueName,
 	}, nil)
 	newMockChannel.On("ExchangeDeclare", delayExchange, "x-delayed-message",
 		true,
@@ -228,39 +244,52 @@ func TestDelayedPublisherRetrySucc(t *testing.T) {
 			"x-delayed-type": "direct",
 		}).Return(nil)
 
-	newMockChannel.On("QueueBind", "mockQueue", "mockQueue", delayExchange, false, mock.Anything).Return(nil)
+	newMockChannel.On("QueueBind", queueName, queueName, delayExchange, false, mock.Anything).Return(nil)
 
-	newMockPublisherClient.On("Channel").Return(newMockChannel, nil)
+	newMockClient := &MockClient{}
+	newMockClient.On("Channel").Return(newMockChannel, nil).Once()
 
-	client.On("ReBind").Return(newMockPublisherClient, nil, nil)
+	mockChannel.On("Publish", delayExchange, queueName, false, false, mock.Anything).Return(errors.New("conn closed")).Once()
+	newMockChannel.On("Publish", delayExchange, queueName, false, false, mock.Anything).Return(nil).Once()
+	try := 0
+	factory := func() (Client, error) {
+		if try == 0 {
+			try++
+			return mockClient, nil
+		} else {
+			try++
+			return newMockClient, nil
+		}
+	}
+	publisher, err := newDelayedPublisherWithClientFactory(factory, delayExchange, delayMS)
 
-	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
-	newMockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, publisher)
 
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
 	assert.NoError(t, err)
+	assert.Equal(t, 2, try)
 
-	client.AssertNumberOfCalls(t, "ReBind", 1)
-	newMockPublisherClient.AssertNumberOfCalls(t, "Channel", 1)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
-	newMockChannel.AssertNumberOfCalls(t, "Publish", 1)
-
+	mockClient.AssertExpectations(t)
+	newMockClient.AssertExpectations(t)
+	mockChannel.AssertExpectations(t)
+	newMockChannel.AssertExpectations(t)
 }
 
 func TestDelayedPublisherRetryFail(t *testing.T) {
-	delayExchange := "mockEchange"
+	delayExchange := "mockExchange"
 	delayMS := 1000
+	queueName := "mockQueue"
 
-	client := &MockPublisherClient{}
-	client.On("Bind").Return(make(chan *amqp.Error), nil)
-	client.On("QueueName").Return("mockQueue")
+	mockClient := &MockClient{}
+	mockClient.On("Config").Return(Config{QueueName: queueName})
 
 	mockChannel := &MockChannel{}
-	mockChannel.On("QueueDeclare", "mockQueue", true, false, false, false, mock.Anything).Return(amqp.Queue{
-		Name: "mockQueue",
+	mockChannel.On("QueueDeclare", queueName, true, false, false, false, mock.Anything).Return(amqp.Queue{
+		Name: queueName,
 	}, nil)
 	mockChannel.On("ExchangeDeclare", delayExchange, "x-delayed-message",
 		true,
@@ -271,27 +300,33 @@ func TestDelayedPublisherRetryFail(t *testing.T) {
 			"x-delayed-type": "direct",
 		}).Return(nil)
 
-	mockChannel.On("QueueBind", "mockQueue", "mockQueue", delayExchange, false, mock.Anything).Return(nil)
+	mockChannel.On("QueueBind", queueName, queueName, delayExchange, false, mock.Anything).Return(nil)
 
-	client.On("Channel").Return(mockChannel, nil)
-
-	publisher, err := newDelayedPublisherWithClient(client, delayExchange, delayMS)
+	mockClient.On("Channel").Return(mockChannel, nil)
+	try := 0
+	factory := func() (Client, error) {
+		if try == 0 {
+			try++
+			return mockClient, nil
+		} else {
+			try++
+			return nil, errors.New("some error")
+		}
+	}
+	publisher, err := newDelayedPublisherWithClientFactory(factory, delayExchange, delayMS)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, publisher)
 
-	client.AssertNumberOfCalls(t, "Bind", 1)
-
-	client.On("ReBind").Return(nil, nil, errors.New("rebind failed"))
-	mockChannel.On("Publish", delayExchange, "mockQueue", false, false, mock.Anything).Return(errors.New("conn closed"))
+	mockChannel.On("Publish", delayExchange, queueName, false, false, mock.Anything).Return(errors.New("conn closed")).Once()
 
 	m := map[string]string{"systemID": "mockID"}
 	err = publisher.Publish(Job{
 		Attributes: NewAttributes(m),
 	})
 	assert.Error(t, err)
+	assert.Equal(t, 2, try)
 
-	client.AssertNumberOfCalls(t, "ReBind", 1)
-	mockChannel.AssertNumberOfCalls(t, "Publish", 1)
-
+	mockClient.AssertExpectations(t)
+	mockChannel.AssertExpectations(t)
 }

@@ -1,6 +1,83 @@
 package rabbitsmpp
 
-import "github.com/streadway/amqp"
+import (
+	"log"
+	"sync"
+
+	"github.com/cenk/backoff"
+	"github.com/streadway/amqp"
+)
+
+var conn struct {
+	conn *amqp.Connection
+	url  string
+	sync.Mutex
+}
+
+func initConn(url string) error {
+	conn.Lock()
+	if conn.conn != nil {
+		conn.Unlock()
+		return nil
+	}
+	conn.Unlock()
+	return startConn(url)
+}
+
+func startConn(url string) error {
+	c, err := amqp.Dial(url)
+	if err != nil {
+		return err
+	}
+	conn.Lock()
+	conn.conn = c
+	conn.url = url
+	conn.Unlock()
+	rebindOnClose()
+	return nil
+}
+
+func rebindOnClose() {
+	conn.Lock()
+	errors := make(chan *amqp.Error)
+	errChan := conn.conn.NotifyClose(errors)
+	conn.Unlock()
+	go func() {
+		closeNotification := <-errChan
+		log.Println("connection was closed:", closeNotification, "rebinding...")
+
+		ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
+		var err error
+		for _ = range ticker.C {
+			err = startConn(conn.url)
+			if err != nil {
+				continue
+			}
+
+			// stop the ticker
+			ticker.Stop()
+			return
+		}
+		log.Fatal("Failed to rebind connection:", err)
+	}()
+}
+
+func closeConn() error {
+	conn.Lock()
+	defer conn.Unlock()
+	if conn.conn == nil {
+		return nil
+	}
+	err := conn.conn.Close()
+	conn.conn = nil
+	return err
+}
+
+func getConn() *amqp.Connection {
+	conn.Lock()
+	defer conn.Unlock()
+	return conn.conn
+}
 
 type Config struct {
 	URL       string
@@ -24,42 +101,51 @@ type Channel interface {
 }
 
 type Client interface {
-	Bind() (chan *amqp.Error, error)
-	QueueName() string
 	Channel() (Channel, error)
+	Config() Config
+	GetCloseChan() chan *amqp.Error
 	Closer
 }
 
+type ClientFactory func() (Client, error)
+
+func clientFactory(conf Config) ClientFactory {
+	return func() (Client, error) {
+		return NewClient(conf)
+	}
+}
+
+var defaultClientFactory = clientFactory
+
 type client struct {
-	config *Config
-	conn   *amqp.Connection
+	config Config
 }
 
-func NewClient(conf Config) Client {
-	return &client{config: &conf}
-}
-
-// Connect establishes the connection to the rabbit MQ
-// it returns a channel that notifies the listener when the connection
-// is closed either by an error/failure or correct shutdown
-func (c *client) Bind() (chan *amqp.Error, error) {
-	conn, err := amqp.Dial(c.config.URL)
+func NewClient(conf Config) (Client, error) {
+	err := initConn(conf.URL)
 	if err != nil {
 		return nil, err
 	}
-	c.conn = conn
-	errors := make(chan *amqp.Error)
-	return conn.NotifyClose(errors), nil
+	return &client{config: conf}, nil
 }
 
 func (c *client) Channel() (Channel, error) {
-	return c.conn.Channel()
+	return getConn().Channel()
+}
+
+func (c *client) Config() Config {
+	return c.config
 }
 
 func (c *client) Close() error {
-	return c.conn.Close()
+	return getConn().Close()
 }
 
-func (c *client) QueueName() string {
-	return c.config.QueueName
+func (c *client) GetCloseChan() chan *amqp.Error {
+	conn := getConn()
+	if conn == nil {
+		return nil
+	}
+	ch := make(chan *amqp.Error)
+	return conn.NotifyClose(ch)
 }
