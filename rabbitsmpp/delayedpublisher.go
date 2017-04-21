@@ -230,7 +230,7 @@ func (p *delayedTTLPublisher) queueSetup() error {
 	args := amqp.Table{
 		"x-dead-letter-exchange":    "",
 		"x-dead-letter-routing-key": p.queueName,
-		"x-message-ttl":             uint32(p.delayMS),
+		"x-message-ttl":             int32(p.delayMS),
 	}
 
 	_, err = ch.QueueDeclare(
