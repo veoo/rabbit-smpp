@@ -119,6 +119,9 @@ func (c *consumer) waitOnClosedClient() {
 }
 
 func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	ch, err := c.Channel()
 	if err != nil {
 		return nil, err
@@ -127,9 +130,6 @@ func (c *consumer) getConsumeChannel() (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	c.m.Lock()
-	defer c.m.Unlock()
 
 	c.channel = ch
 
@@ -172,8 +172,10 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 		defer func() {
 			c.m.Lock()
 			defer c.m.Unlock()
-			_ = c.channel.Close()
-			c.channel = nil
+			if c.channel != nil {
+				_ = c.channel.Close()
+				c.channel = nil
+			}
 
 			close(jobChan)
 			close(errChan)
