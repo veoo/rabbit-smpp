@@ -130,7 +130,9 @@ func NewClient(conf Config) (Client, error) {
 }
 
 func (c *client) Channel() (Channel, error) {
-	return getConn().Channel()
+	conn.Lock()
+	defer conn.Unlock()
+	return conn.conn.Channel()
 }
 
 func (c *client) Config() Config {
@@ -142,10 +144,11 @@ func (c *client) Close() error {
 }
 
 func (c *client) GetCloseChan() chan *amqp.Error {
-	conn := getConn()
-	if conn == nil {
+	conn.Lock()
+	defer conn.Unlock()
+	if conn.conn == nil {
 		return nil
 	}
 	ch := make(chan *amqp.Error)
-	return conn.NotifyClose(ch)
+	return conn.conn.NotifyClose(ch)
 }
