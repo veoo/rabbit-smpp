@@ -103,15 +103,15 @@ func (p *publisher) queueSetup() error {
 
 // Publish sends the Job to the rabbitmq if the underlying connection needs re-binding it is done automagically
 func (p *publisher) Publish(j Job) error {
-	p.m.Lock()
-	defer p.m.Unlock()
-
 	bodyBytes, err := json.Marshal(j)
 	if err != nil {
 		return err
 	}
 
 	cmd := func() error {
+		p.m.Lock()
+		defer p.m.Unlock()
+
 		return p.sendChan.Publish(
 			"",          // exchange
 			p.queueName, // routing key

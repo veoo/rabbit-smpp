@@ -51,8 +51,10 @@ func rebindOnClose() {
 		for _ = range ticker.C {
 			err = startConn(conn.url)
 			if err != nil {
+				log.Println("failed to restore connection:", err)
 				continue
 			}
+			log.Println("connection was restored")
 
 			// stop the ticker
 			ticker.Stop()
@@ -62,7 +64,7 @@ func rebindOnClose() {
 	}()
 }
 
-func closeConn() error {
+func CloseConn() error {
 	conn.Lock()
 	defer conn.Unlock()
 	if conn.conn == nil {
