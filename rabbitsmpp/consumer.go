@@ -215,7 +215,11 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 func (c *consumer) consume(dlvChan <-chan amqp.Delivery, closeChan <-chan *amqp.Error, jobChan chan<- Job) error {
 	for {
 		select {
-		case d := <-dlvChan:
+		case d, ok := <-dlvChan:
+			if !ok {
+				log.Printf("deliver chan is closed, returning")
+				return nil
+			}
 			j := Job{}
 			err := json.Unmarshal(d.Body, &j)
 			if err != nil {
