@@ -25,12 +25,11 @@ func initConn(url string) error {
 }
 
 func startConn(url string) error {
-	conn.Lock()
 	c, err := amqp.Dial(url)
 	if err != nil {
-		conn.Unlock()
 		return err
 	}
+	conn.Lock()
 	conn.conn = c
 	conn.url = url
 	conn.Unlock()
