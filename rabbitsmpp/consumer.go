@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultPrefetchCount = 0
+	defaultPrefetchCount = 1
 	defaultPrefetchSize  = 0
 	defaultGlobalQos     = false
 )
