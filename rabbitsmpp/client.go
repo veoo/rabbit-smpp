@@ -1,6 +1,7 @@
 package rabbitsmpp
 
 import (
+	"errors"
 	"log"
 	"sync"
 
@@ -8,20 +9,27 @@ import (
 	"github.com/streadway/amqp"
 )
 
-var conn struct {
+type conn struct {
+	sync.Mutex
 	conn *amqp.Connection
 	url  string
-	sync.Mutex
+	once sync.Once
 }
 
+var (
+	singleConn = &conn{}
+)
+
 func initConn(url string) error {
-	conn.Lock()
-	if conn.conn != nil {
-		conn.Unlock()
-		return nil
+	var err error
+	initFunc := func() {
+		if singleConn.conn != nil {
+			return
+		}
+		err = startConn(url)
 	}
-	conn.Unlock()
-	return startConn(url)
+	singleConn.once.Do(initFunc)
+	return err
 }
 
 func startConn(url string) error {
@@ -29,19 +37,20 @@ func startConn(url string) error {
 	if err != nil {
 		return err
 	}
-	conn.Lock()
-	conn.conn = c
-	conn.url = url
-	conn.Unlock()
+	singleConn.Lock()
+	singleConn.conn = c
+	singleConn.url = url
+	singleConn.Unlock()
 	rebindOnClose()
 	return nil
 }
 
 func rebindOnClose() {
-	conn.Lock()
+	singleConn.Lock()
 	errors := make(chan *amqp.Error)
-	errChan := conn.conn.NotifyClose(errors)
-	conn.Unlock()
+	errChan := singleConn.conn.NotifyClose(errors)
+	url := singleConn.url
+	singleConn.Unlock()
 	go func() {
 		closeNotification := <-errChan
 		log.Println("connection was closed:", closeNotification, "rebinding...")
@@ -49,7 +58,7 @@ func rebindOnClose() {
 		ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
 		var err error
 		for _ = range ticker.C {
-			err = startConn(conn.url)
+			err = startConn(url)
 			if err != nil {
 				log.Println("failed to restore connection:", err)
 				continue
@@ -65,20 +74,20 @@ func rebindOnClose() {
 }
 
 func CloseConn() error {
-	conn.Lock()
-	defer conn.Unlock()
-	if conn.conn == nil {
+	singleConn.Lock()
+	defer singleConn.Unlock()
+	if singleConn.conn == nil {
 		return nil
 	}
-	err := conn.conn.Close()
-	conn.conn = nil
+	err := singleConn.conn.Close()
+	singleConn.conn = nil
 	return err
 }
 
 func getConn() *amqp.Connection {
-	conn.Lock()
-	defer conn.Unlock()
-	return conn.conn
+	singleConn.Lock()
+	defer singleConn.Unlock()
+	return singleConn.conn
 }
 
 type Config struct {
@@ -132,9 +141,12 @@ func NewClient(conf Config) (Client, error) {
 }
 
 func (c *client) Channel() (Channel, error) {
-	conn.Lock()
-	defer conn.Unlock()
-	return conn.conn.Channel()
+	singleConn.Lock()
+	defer singleConn.Unlock()
+	if singleConn.conn == nil {
+		return nil, errors.New("connection is closed")
+	}
+	return singleConn.conn.Channel()
 }
 
 func (c *client) Config() Config {
@@ -146,11 +158,11 @@ func (c *client) Close() error {
 }
 
 func (c *client) GetCloseChan() chan *amqp.Error {
-	conn.Lock()
-	defer conn.Unlock()
-	if conn.conn == nil {
+	singleConn.Lock()
+	defer singleConn.Unlock()
+	if singleConn.conn == nil {
 		return nil
 	}
 	ch := make(chan *amqp.Error)
-	return conn.conn.NotifyClose(ch)
+	return singleConn.conn.NotifyClose(ch)
 }
