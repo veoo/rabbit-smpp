@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,6 +70,36 @@ func (s *ClientSuite) CheckQueue(ch Channel, numMessages int) {
 	assert.Equal(s.T(), numMessages, queue.Messages)
 }
 
+func (s *ClientSuite) ConsumeQueue(jobChan <-chan Job, errChan <-chan error, numMessages int) {
+	jobCounter := 0
+	errCounter := 0
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case j, ok := <-jobChan:
+				if !ok {
+					return
+				}
+				jobCounter++
+				j.Ack(false)
+			case _, ok := <-errChan:
+				if !ok {
+					return
+				}
+				errCounter++
+			case <-time.After(1 * time.Second):
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	assert.Equal(s.T(), numMessages, jobCounter)
+	assert.Equal(s.T(), 0, errCounter)
+}
+
 func (s *ClientSuite) testConnReset(resetFunc func()) {
 	client, err := NewClient(s.config)
 	require.NoError(s.T(), err)
@@ -80,14 +111,21 @@ func (s *ClientSuite) testConnReset(resetFunc func()) {
 	publisher, err := NewPublisher(s.config)
 	require.NoError(s.T(), err)
 
+	consumer, err := NewConsumer(s.config)
+	require.NoError(s.T(), err)
+	jobChan, errChan, err := consumer.Consume()
+	require.NoError(s.T(), err)
+
 	numMessages := 50
 	for i := 0; i < numMessages; i++ {
 		err = publisher.Publish(Job{})
 		require.NoError(s.T(), err)
 	}
 	time.Sleep(1 * time.Second)
-	s.CheckQueue(ch, numMessages)
-	ch.QueuePurge(queueName, false)
+	// this is because right when consumer starts, it caches 'defaultPrefetchCount' messages
+	s.CheckQueue(ch, numMessages-defaultPrefetchCount)
+	s.ConsumeQueue(jobChan, errChan, numMessages)
+	s.CheckQueue(ch, 0)
 
 	resetFunc()
 
@@ -105,7 +143,12 @@ func (s *ClientSuite) testConnReset(resetFunc func()) {
 		require.NoError(s.T(), err)
 	}
 	time.Sleep(1 * time.Second)
-	s.CheckQueue(ch, numMessages)
+	// this is because right when consumer starts, it caches 'defaultPrefetchCount' messages
+	s.CheckQueue(ch, numMessages-defaultPrefetchCount)
+	s.ConsumeQueue(jobChan, errChan, numMessages)
+	s.CheckQueue(ch, 0)
+	err = consumer.Stop()
+	require.NoError(s.T(), err)
 }
 
 func (s *ClientSuite) TestConnClose() {
