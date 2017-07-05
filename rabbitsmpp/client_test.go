@@ -188,7 +188,7 @@ func (s *ClientSuite) TestAConnDownThenUp() {
 	require.Error(s.T(), err)
 
 	StartRabbitMQContainerWithPort(33192)
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	client, err = NewClient(s.config)
 	require.NoError(s.T(), err)
