@@ -21,7 +21,7 @@ const (
 
 func StartRabbitMQContainerWithPort(port int) error {
 	portStr := strconv.Itoa(port)
-	cmdStatement := fmt.Sprintf("docker run --name rabbit-delay-test -p :%s:5672 -d rq_delay_queue:latest", portStr)
+	cmdStatement := fmt.Sprintf("docker run --name rabbit-delay-test -p :%s:5672 -d rabbitmq", portStr)
 	cmdParts := strings.Split(cmdStatement, " ")
 	cmd := exec.Command(cmdParts[0], cmdParts[1:]...)
 	return cmd.Run()
@@ -173,7 +173,7 @@ func (s *ClientSuite) TestRQTeardown() {
 		require.Nil(s.T(), ch)
 
 		StartRabbitMQContainerWithPort(33192)
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 
 	}
 
