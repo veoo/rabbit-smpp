@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -54,8 +55,21 @@ func (s *ClientSuite) TearDownSuite() {
 	RemoveRabbitMQContainer()
 }
 
-func (s *ClientSuite) TestConnClose() {
+func (s *ClientSuite) TearDownTest() {
+	client, _ := NewClient(s.config)
+	require.NotNil(s.T(), client)
+	ch, _ := client.Channel()
+	require.NotNil(s.T(), ch)
+	ch.QueuePurge(queueName, false)
+}
 
+func (s *ClientSuite) CheckQueue(ch Channel, numMessages int) {
+	queue, err := ch.QueueInspect(queueName)
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), numMessages, queue.Messages)
+}
+
+func (s *ClientSuite) testConnReset(resetFunc func()) {
 	client, err := NewClient(s.config)
 	require.NoError(s.T(), err)
 	ch, err := client.Channel()
@@ -63,8 +77,19 @@ func (s *ClientSuite) TestConnClose() {
 	require.NotNil(s.T(), ch)
 	closeChan := client.GetCloseChan()
 
-	CloseConn()
-	time.Sleep(3 * time.Second)
+	publisher, err := NewPublisher(s.config)
+	require.NoError(s.T(), err)
+
+	numMessages := 50
+	for i := 0; i < numMessages; i++ {
+		err = publisher.Publish(Job{})
+		require.NoError(s.T(), err)
+	}
+	time.Sleep(1 * time.Second)
+	s.CheckQueue(ch, numMessages)
+	ch.QueuePurge(queueName, false)
+
+	resetFunc()
 
 	ch, err = client.Channel()
 	require.NoError(s.T(), err)
@@ -74,42 +99,42 @@ func (s *ClientSuite) TestConnClose() {
 	default:
 		require.Fail(s.T(), "closeChan did not receive notification")
 	}
+
+	for i := 0; i < numMessages; i++ {
+		err = publisher.Publish(Job{})
+		require.NoError(s.T(), err)
+	}
+	time.Sleep(1 * time.Second)
+	s.CheckQueue(ch, numMessages)
+}
+
+func (s *ClientSuite) TestConnClose() {
+	resetFunc := func() {
+		CloseConn()
+		time.Sleep(3 * time.Second)
+	}
+	s.testConnReset(resetFunc)
 }
 
 func (s *ClientSuite) TestRQTeardown() {
 
-	client, err := NewClient(s.config)
-	require.NoError(s.T(), err)
-	ch, err := client.Channel()
-	require.NoError(s.T(), err)
-	require.NotNil(s.T(), ch)
-	closeChan := client.GetCloseChan()
+	resetFunc := func() {
+		RemoveRabbitMQContainer()
+		time.Sleep(1 * time.Second)
 
-	RemoveRabbitMQContainer()
-	time.Sleep(1 * time.Second)
+		badClient, err := NewClient(s.config)
+		require.NoError(s.T(), err)
+		require.NotNil(s.T(), badClient)
+		ch, err := badClient.Channel()
+		require.Error(s.T(), err)
+		require.Nil(s.T(), ch)
 
-	ch, err = client.Channel()
-	require.Error(s.T(), err)
-	require.Nil(s.T(), ch)
+		StartRabbitMQContainerWithPort(33192)
+		time.Sleep(5 * time.Second)
 
-	badClient, err := NewClient(s.config)
-	require.NoError(s.T(), err)
-	require.NotNil(s.T(), badClient)
-	ch, err = badClient.Channel()
-	require.Error(s.T(), err)
-	require.Nil(s.T(), ch)
-
-	StartRabbitMQContainerWithPort(33192)
-	time.Sleep(5 * time.Second)
-
-	ch, err = client.Channel()
-	require.NoError(s.T(), err)
-	require.NotNil(s.T(), ch)
-	select {
-	case <-closeChan:
-	default:
-		require.Fail(s.T(), "closeChan did not receive notification")
 	}
+
+	s.testConnReset(resetFunc)
 }
 
 func (s *ClientSuite) TestAConnDownThenUp() {

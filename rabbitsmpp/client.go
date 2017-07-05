@@ -110,6 +110,7 @@ type Channel interface {
 	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
 	QueueDeclare(string, bool, bool, bool, bool, amqp.Table) (amqp.Queue, error)
 	QueueInspect(string) (amqp.Queue, error)
+	QueuePurge(string, bool) (int, error)
 	Consume(string, string, bool, bool, bool, bool, amqp.Table) (<-chan amqp.Delivery, error)
 	Publish(string, string, bool, bool, amqp.Publishing) error
 	Qos(int, int, bool) error
