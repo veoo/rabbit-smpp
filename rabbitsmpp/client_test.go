@@ -88,6 +88,17 @@ func (s *ClientSuite) TestRQTeardown() {
 	RemoveRabbitMQContainer()
 	time.Sleep(1 * time.Second)
 
+	ch, err = client.Channel()
+	require.Error(s.T(), err)
+	require.Nil(s.T(), ch)
+
+	badClient, err := NewClient(s.config)
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), badClient)
+	ch, err = badClient.Channel()
+	require.Error(s.T(), err)
+	require.Nil(s.T(), ch)
+
 	StartRabbitMQContainerWithPort(33192)
 	time.Sleep(5 * time.Second)
 
@@ -99,4 +110,21 @@ func (s *ClientSuite) TestRQTeardown() {
 	default:
 		require.Fail(s.T(), "closeChan did not receive notification")
 	}
+}
+
+func (s *ClientSuite) TestAConnDownThenUp() {
+	RemoveRabbitMQContainer()
+	time.Sleep(1 * time.Second)
+
+	client, err := NewClient(s.config)
+	require.Error(s.T(), err)
+
+	StartRabbitMQContainerWithPort(33192)
+	time.Sleep(5 * time.Second)
+
+	client, err = NewClient(s.config)
+	require.NoError(s.T(), err)
+	ch, err := client.Channel()
+	require.NoError(s.T(), err)
+	require.NotNil(s.T(), ch)
 }

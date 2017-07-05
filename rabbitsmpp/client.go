@@ -29,6 +29,10 @@ func initConn(url string) error {
 		err = startConn(url)
 	}
 	singleConn.once.Do(initFunc)
+	// if we fail to init, dont block this func
+	if err != nil {
+		singleConn.once = sync.Once{}
+	}
 	return err
 }
 
@@ -54,6 +58,7 @@ func rebindOnClose() {
 	go func() {
 		closeNotification := <-errChan
 		log.Println("connection was closed:", closeNotification, "rebinding...")
+		CloseConn()
 
 		ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
 		var err error
