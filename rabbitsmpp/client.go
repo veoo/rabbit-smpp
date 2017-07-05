@@ -13,11 +13,11 @@ type conn struct {
 	sync.Mutex
 	conn *amqp.Connection
 	url  string
-	once sync.Once
+	once *sync.Once
 }
 
 var (
-	singleConn = &conn{}
+	singleConn = &conn{once: &sync.Once{}}
 )
 
 func initConn(url string) error {
@@ -31,7 +31,7 @@ func initConn(url string) error {
 	singleConn.once.Do(initFunc)
 	// if we fail to init, dont block this func
 	if err != nil {
-		singleConn.once = sync.Once{}
+		singleConn.once = &sync.Once{}
 	}
 	return err
 }

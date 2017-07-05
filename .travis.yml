@@ -1,4 +1,4 @@
-sudo: required
+sudo: false
 
 language: go
 
@@ -11,9 +11,6 @@ branches:
 
 services:
   - docker
-
-env:
-  - DOCKERTEST_BIND_LOCALHOST=true
 
 script:
   - go vet $(go list ./... | grep -v '/vendor/')
