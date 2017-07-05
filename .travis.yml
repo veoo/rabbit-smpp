@@ -12,6 +12,9 @@ branches:
 services:
   - docker
 
+env:
+  - DOCKERTEST_BIND_LOCALHOST=true
+
 script:
   - go vet $(go list ./... | grep -v '/vendor/')
   - go test -v $(go list ./... | grep -v '/vendor/')
