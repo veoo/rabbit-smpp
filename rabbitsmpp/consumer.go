@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cenk/backoff"
 	"github.com/streadway/amqp"
 	"golang.org/x/net/context"
 )
@@ -201,11 +202,16 @@ func (c *consumer) Consume() (<-chan Job, <-chan error, error) {
 
 			c.waitOnClosedClient()
 			closeChan = c.Client.GetCloseChan()
-			dlvChan, err = c.getConsumeChannel()
-			for err != nil {
-				time.Sleep(5 * time.Second)
+
+			ticker := backoff.NewTicker(backoff.NewExponentialBackOff())
+			for _ = range ticker.C {
 				dlvChan, err = c.getConsumeChannel()
+				if err == nil {
+					ticker.Stop()
+					break
+				}
 			}
+			log.Println("restarting job consumption")
 		}
 	}()
 
