@@ -156,8 +156,9 @@ func (p *delayedPublisher) publish(j Job, delayMs int) error {
 				Headers: amqp.Table{
 					"x-delay": int32(delayMs),
 				},
-				ContentType: "application/json",
-				Body:        bodyBytes,
+				ContentType:  "application/json",
+				Body:         bodyBytes,
+				DeliveryMode: uint8(2), // persistent
 			})
 	}
 
@@ -272,8 +273,9 @@ func (p *delayedTTLPublisher) Publish(j Job) error {
 			false,        // mandatory
 			false,        // immediate
 			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        bodyBytes,
+				ContentType:  "application/json",
+				Body:         bodyBytes,
+				DeliveryMode: uint8(2), // persistent
 			})
 	}
 
