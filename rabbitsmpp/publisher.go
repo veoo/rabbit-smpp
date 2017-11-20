@@ -118,8 +118,9 @@ func (p *publisher) Publish(j Job) error {
 			false,       // mandatory
 			false,       // immediate
 			amqp.Publishing{
-				ContentType: "application/json",
-				Body:        bodyBytes,
+				ContentType:  "application/json",
+				Body:         bodyBytes,
+				DeliveryMode: uint8(2), // persistent
 			})
 	}
 
