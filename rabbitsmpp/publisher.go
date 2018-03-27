@@ -8,11 +8,27 @@ import (
 	"github.com/streadway/amqp"
 )
 
+const (
+	defaultExchange = ""
+)
+
 var (
 	errAlreadyBound = errors.New("already bound")
 	errClientClosed = errors.New("closed client")
 	errMaxBindretry = errors.New("max bind retry")
 )
+
+type PublishOptionSetter func(*publishOptions)
+
+type publishOptions struct {
+	exchange string
+}
+
+func SetExchange(e string) PublishOptionSetter {
+	return func(o *publishOptions) {
+		o.exchange = e
+	}
+}
 
 // Publisher is interface for publishing data to the queues
 type Publisher interface {
@@ -39,25 +55,29 @@ type publisher struct {
 	clientFactory ClientFactory
 	sendChan      Channel
 	queueName     string
+	exchange      string
 }
 
 // NewPublisher creates a new publisher with direct exchange
-func NewPublisher(conf Config) (Publisher, error) {
+func NewPublisher(conf Config, options ...PublishOptionSetter) (Publisher, error) {
 	clientFactory := defaultClientFactory(conf)
-	return newPublisherWithClientFactory(clientFactory)
+	return newPublisherWithClientFactory(clientFactory, options...)
 }
 
-func newPublisherWithClientFactory(clientFactory ClientFactory) (Publisher, error) {
+func newPublisherWithClientFactory(clientFactory ClientFactory, options ...PublishOptionSetter) (Publisher, error) {
 	var m sync.Mutex
 	client, err := clientFactory()
 	if err != nil {
 		return nil, err
 	}
+	o := buildPublishOptions(options...)
+
 	publisher := &publisher{
 		m:             &m,
 		client:        client,
 		clientFactory: clientFactory,
 		queueName:     client.Config().QueueName,
+		exchange:      o.exchange,
 	}
 
 	if err := publisher.queueSetup(); err != nil {
@@ -113,7 +133,7 @@ func (p *publisher) Publish(j Job) error {
 		defer p.m.Unlock()
 
 		return p.sendChan.Publish(
-			"",          // exchange
+			p.exchange,  // exchange
 			p.queueName, // routing key
 			false,       // mandatory
 			false,       // immediate
@@ -138,4 +158,14 @@ func (p *publisher) reset() error {
 
 	// setup the queues
 	return p.queueSetup()
+}
+
+func buildPublishOptions(options ...PublishOptionSetter) *publishOptions {
+	o := &publishOptions{
+		exchange: defaultExchange,
+	}
+	for _, option := range options {
+		option(o)
+	}
+	return o
 }
